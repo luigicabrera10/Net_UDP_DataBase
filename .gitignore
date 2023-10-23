@@ -4,3 +4,9 @@ mainServer.out
 subServer.out
 relaciones.tx
 .vscode
+client.o
+mainServer.o
+subServer.o
+client
+mainServer
+subServer

@@ -24,12 +24,14 @@ struct sockaddr_in client_addr;
 struct sockaddr_in server_addr;
 struct sockaddr_in servers[serversNum];
 
+// Funcion que convierte un numero a string con un tamaño especifico
 int checksum(const string input) {
    int checksum = 0;
    for (int i = 0; i < input.size(); ++i) checksum += (int) input[i];
    return checksum;
 }
 
+// Funcion que comprueba el checksum de un mensaje
 bool validateChecksum(string msg){
 
     // cout << msg.size() << " - " << msg << endl;
@@ -38,118 +40,101 @@ bool validateChecksum(string msg){
         
     int check = stoi(msg.substr(msg.size() - 10, 10));
     return check ==  checksum(msg.substr(0, msg.size()-10));
-
 }
 
+// Funcion que envia un mensaje
 void sendMsg(struct sockaddr_in objSocket, string msg){
-
     int bytes_read;
     char data[packSize];
     char ack[packSize];
     string aux;
-
-    bzero(data, packSize);
+    bzero(data, packSize); // Limpia el buffer
     for (int i = 0; i < msg.size(); ++i) data[i] = msg[i];
 
     while(1){
-        sendto(sock, data, strlen(data), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr));
-
-        // Wait for ACK
-        bytes_read = recvfrom(sock,ack,1024,MSG_WAITALL, (struct sockaddr *)&objSocket, &addr_len);
-        aux.assign(ack, bytes_read);
-
-        if (aux.substr(0,3) == "UWU") break;
+        sendto(sock, data, strlen(data), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr)); // Send MSG
+        bytes_read = recvfrom(sock,ack,1024,MSG_WAITALL, (struct sockaddr *)&objSocket, &addr_len); // Recive ACK
+        aux.assign(ack, bytes_read); // Convertir a string
+        if (aux.substr(0,3) == "UWU") break; // Si el ACK es correcto se sale del loop
     }
-
     cout << "MSG send: " << msg << endl;    
 
 }
 
+// Funcion que recibe un mensaje
 string reciveMsg(struct sockaddr_in objSocket){
-
     int bytes_read;
     char data[packSize];
     string aux;
 
     while(1){
-
         bytes_read = recvfrom(sock,data,1024,MSG_WAITALL, (struct sockaddr *)&objSocket, &addr_len);
         aux.assign(data, bytes_read);
 
-        if (validateChecksum(aux)){ // SEND ACK
-            sendto(sock, "UWU", strlen("UWU"), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr));
+        if (validateChecksum(aux)){ // Si el checksum es correcto
+            sendto(sock, "UWU", strlen("UWU"), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr)); // SEND ACK
             break;
-        }
-        else{ // SEND NAK
+        } else{ // SEND NAK
             sendto(sock, "UNU", strlen("UNU"), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr));
         }  
     }
-
     cout << "MSG recived: " << aux << endl;    
-
     return aux;
-   
 }
 
-
+// Funcion que redirige el mensaje a dos servidores
 void simpleRedirect(string msg){
-    
-    int mod = msg[3] % serversNum;
-    cout << "MOD: " << msg[3] << " " << mod << endl;
 
-    sendMsg(servers[mod], msg);
-    sendMsg(servers[(mod+1) % serversNum], msg);
+    int mod = msg[3] % serversNum; // Seleccionar el subserver
 
+    sendMsg(servers[mod], msg); // Enviar el mensaje al subserver
+    sendMsg(servers[(mod+1) % serversNum], msg); // Enviar el mensaje al backup del subserver
 }
 
+// Funcion que recibe el ACK del subserver
 void threadReciveACK(int mod){
-    char ack[packSize];
+    char ack[packSize]; 
     cout << "Running thread" << endl;
     int bytes_read = recvfrom(sock,ack,1024,MSG_WAITALL, (struct sockaddr *)&(servers[mod]), &addr_len);
     cout << "Recived: " << ack << endl;
 }
 
+// Funcion que lee el mensaje del subserver
 string readSubServer(int mod){
     int size;
     string subMsg;
     string totalMsg;
-
-
     subMsg = reciveMsg(servers[mod]);
     totalMsg = subMsg;
 
-    size = stoi( subMsg.substr(1, 7) ) - (subMsg.size() - 1 - 7 - 10);
+    size = stoi(subMsg.substr(1, 7) ) - (subMsg.size() - 1 - 7 - 10); // Tamaño del mensaje - (header + checksum)
 
     while (size > 0){
         subMsg = reciveMsg(servers[mod]);
         totalMsg += subMsg;
         size -= (subMsg.size() - 10);
     }
-
-    return totalMsg; 
-
+    return totalMsg; // Regresa el mensaje completo
 }
 
-// estamos F
+// Funcion que envia el mensaje al cliente en partes de 1024 bytes
 void sendAnswer(string msg){
 
-    string subMsg = msg.substr(0, 1014);
+    string subMsg = msg.substr(0, 1014); // Seleccionar el primer mensaje de 1024 bytes
     //subMsg = subMsg + to_string_parse(checksum(subMsg), 10);
-    sendMsg(client_addr, subMsg);
+    sendMsg(client_addr, subMsg); // Enviar el mensaje al cliente
 
-    msg = msg.substr(1024, msg.size()- 1024);
+    msg = msg.substr(1024, msg.size()- 1024); // Quitar el mensaje ya enviado
     
-    while(msg.size()){
-
-        subMsg = msg.substr(0, 1024);
-        sendMsg(client_addr, subMsg);
-        msg = msg.substr(1024, msg.size() - 1024);
-
+    while(msg.size()){ // Mientras queden mensajes por enviar
+        subMsg = msg.substr(0, 1024); // Seleccionar el primer mensaje de 1024 bytes
+        sendMsg(client_addr, subMsg); // Enviar el mensaje al cliente
+        msg = msg.substr(1024, msg.size() - 1024); // Quitar el mensaje ya enviado
     }
-
 }
 
-void readRedirect(string msg){
+// Funcion que lee el mensaje del cliente
+void readRedirect(string msg){ 
 
     // RDT3 (server turned off)
     int bytes_read;
@@ -157,13 +142,11 @@ void readRedirect(string msg){
     char recv_data[packSize];
     int mod = msg[3] % serversNum;
 
-    // First server
+    // Se envia la peticion al subserver
     sendto(sock, msg.c_str(), strlen(msg.c_str()), 0, (struct sockaddr *)&(servers[mod]), sizeof(struct sockaddr));
-    thread th = thread(threadReciveACK, mod);
-
-    this_thread::sleep_for(chrono::seconds(2));
-
-    if (!th.joinable()){
+    thread th = thread(threadReciveACK, mod); // Se crea un thread para esperar el ACK
+    this_thread::sleep_for(chrono::seconds(2)); // Se espera 2 segundos
+    if (!th.joinable()){ // Si el thread no se pudo unir
 
         cout << "SERVER " << mod << " not online" << endl;
 
@@ -171,7 +154,8 @@ void readRedirect(string msg){
         sendto(sock, "UWU", strlen("UWU"), 0, (struct sockaddr *)&(server_addr), sizeof(struct sockaddr));
         th.join();
 
-        mod = (mod+1) % serversNum;
+        mod = (mod+1) % serversNum; // Seleccionar el backup del subserver
+        // Se envia al backup del subserver
         sendto(sock, msg.c_str(), strlen(msg.c_str()), 0, (struct sockaddr *)&(servers[mod]), sizeof(struct sockaddr));
         thread th2 = thread(threadReciveACK, mod);
 
@@ -254,22 +238,16 @@ void waitSubServers(){
 
 }
 
+// Funcion que escucha al cliente
 void listenClient(){
-
     int bytes_read;
     string recived_data;
     char recv_data[packSize];
-
-
     while(1){
-
         recived_data = reciveMsg(client_addr);
-
-        if (recived_data[0] != 'R') simpleRedirect(recived_data);     
-        else readRedirect(recived_data);
-
+        if (recived_data[0] != 'R') simpleRedirect(recived_data); // Si no es read se usa simple redirect
+        else readRedirect(recived_data); // Si es read se usa read redirect
     }
-
 }
 
 int main(){
@@ -284,7 +262,6 @@ int main(){
 
     // listen client
     listenClient();
-
 
     return 0;
 }

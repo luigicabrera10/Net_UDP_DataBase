@@ -157,20 +157,20 @@ void readRedirect(string msg){
         mod = (mod+1) % serversNum; // Seleccionar el backup del subserver
         // Se envia al backup del subserver
         sendto(sock, msg.c_str(), strlen(msg.c_str()), 0, (struct sockaddr *)&(servers[mod]), sizeof(struct sockaddr));
-        thread th2 = thread(threadReciveACK, mod);
+        thread th2 = thread(threadReciveACK, mod); // Se crea un thread para esperar el ACK
 
-        this_thread::sleep_for(chrono::seconds(2));
+        this_thread::sleep_for(chrono::seconds(2)); // Se espera 2 segundos
 
-        if (!th2.joinable()){
+        if (!th2.joinable()){ // Si el thread no se pudo unir
             // Autosend ACK
             sendto(sock, "UWU", strlen("UWU"), 0, (struct sockaddr *)&(server_addr), sizeof(struct sockaddr));
             th2.join();
-            cout << "SERVER " << mod << " not online" << endl;
+            cout << "SERVER " << mod << " not online" << endl; // El backup del subserver no esta disponible
             return;
         }
-        else th2.join();
+        else th2.join(); // El backup del subserver si esta disponible
     }
-    else th.join();
+    else th.join(); // El subserver si esta disponible
 
     // El servidor si recibio el mensaje
     // LALO CODEA EL REGRESO

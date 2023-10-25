@@ -14,11 +14,15 @@
 
 using namespace std;
 
+// Variables Globales
 int sock;
 socklen_t addr_len;
 struct sockaddr_in server_addr;
 const int packSize = 1024;
+int sequence_number = 0;
+int pkt_number = 0;
 
+// Funcion que formatea un numero menor a 10
 string numberFormat (int num){
    // Si el numero es menor a 10, le agregamos un 0 al inicio
    if (num < 10) return "0" + to_string(num);
@@ -31,22 +35,21 @@ string to_string_parse(int num, int size){
 	return s;	
 }
 
+// Funcion que calcula el checksum
 int checksum(const string input) {
    int checksum = 0;
    for (int i = 0; i < input.size(); ++i) checksum += (int) input[i];
    return checksum;
 }
 
+// Funcion que valida el checksum
 bool validateChecksum(string msg){
-
    cout << msg.size() << " - " << msg << endl;
    cout << msg.substr(msg.size() - 11, 10) << endl;
    return 1;
-    
 }
 
 void sendMsg(struct sockaddr_in objSocket, string msg){
-
    int bytes_read;
    char data[packSize];
    char ack[packSize];
@@ -64,7 +67,6 @@ void sendMsg(struct sockaddr_in objSocket, string msg){
 
       if (aux.substr(0,3) == "UWU") break;
    }
-   
 }
 
 
@@ -93,7 +95,7 @@ string reciveMsg(struct sockaddr_in objSocket){
 }
 
 
-
+// Funcion que parsea el mensaje
 void parsing( char *data){
    // Guardamos todo el contenido del mensaje en un string
    string msg(data);
@@ -108,6 +110,8 @@ void parsing( char *data){
       string name2 = msg.substr(pos+1, pos2-pos-1);
       // Obtenemos la relacion que se encuentra despues del tercer espacio
       string relation = msg.substr(pos2+1);
+      // Obtenemos el numero de secuencia
+      string sequence_number_str = numberFormat(sequence_number);
       // Obtenemos el tamaño de la cadena
       int size1 = name1.length();
       int size2 = name2.length();
@@ -121,10 +125,7 @@ void parsing( char *data){
       cout << "Name 2: " << name2 << endl;
       cout << "Relation: " << relation << endl;
       // Guardamos en el char "C" + tamaño1 + nombre1 + tamaño2 + nombre2 + tamaño3 + relacion
-
       string new_char = "C" + size1_str + name1 + size2_str + name2 + size3_str + relation;
-      new_char = new_char + to_string_parse(checksum(new_char), 10) + '\0';
-
       strcpy(data, new_char.c_str());      
 
    } else if (msg[0] == 'R'){
@@ -145,8 +146,6 @@ void parsing( char *data){
       cout << "Recurrence: " << recurrence << endl;
       // Guardamos en el char "R" + tamaño1 + nombre1 + tamaño2 + recurrencia
       string new_char = "R" + size1_str + name1 + size2_str + recurrence;
-      new_char = new_char + to_string_parse(checksum(new_char), 10) + '\0';
-
       strcpy(data, new_char.c_str());
    } else if (msg[0] == 'U'){
       // Buscamos segundo espacio

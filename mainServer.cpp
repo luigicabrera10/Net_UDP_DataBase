@@ -91,14 +91,6 @@ void simpleRedirect(string msg){
     sendMsg(servers[(mod+1) % serversNum], msg); // Enviar el mensaje al backup del subserver
 }
 
-// Funcion que recibe el ACK del subserver
-void threadReciveACK(int mod){
-    char ack[packSize]; 
-    cout << "Running thread" << endl;
-    int bytes_read = recvfrom(sock,ack,1024,MSG_WAITALL, (struct sockaddr *)&(servers[mod]), &addr_len);
-    cout << "Recived: " << ack << endl;
-}
-
 // Funcion que lee el mensaje del subserver
 string readSubServer(int mod){
     int size;
@@ -133,6 +125,14 @@ void sendAnswer(string msg){
     }
 }
 
+// Funcion que recibe el ACK del subserver
+void threadReciveACK(int mod){
+    char ack[packSize]; 
+    cout << "Running thread" << endl;
+    int bytes_read = recvfrom(sock,ack,1024,MSG_WAITALL, (struct sockaddr *)&(servers[mod]), &addr_len);
+    cout << "Recived: " << ack << endl;
+}
+
 // Funcion que lee el mensaje del cliente
 void readRedirect(string msg){ 
 
@@ -144,42 +144,13 @@ void readRedirect(string msg){
 
     // Se envia la peticion al subserver
     sendto(sock, msg.c_str(), strlen(msg.c_str()), 0, (struct sockaddr *)&(servers[mod]), sizeof(struct sockaddr));
-    thread th = thread(threadReciveACK, mod); // Se crea un thread para esperar el ACK
-    this_thread::sleep_for(chrono::seconds(2)); // Se espera 2 segundos
-    if (!th.joinable()){ // Si el thread no se pudo unir
-
-        cout << "SERVER " << mod << " not online" << endl;
-
-        // Autosend ACK
-        sendto(sock, "UWU", strlen("UWU"), 0, (struct sockaddr *)&(server_addr), sizeof(struct sockaddr));
-        th.join();
-
-        mod = (mod+1) % serversNum; // Seleccionar el backup del subserver
-        // Se envia al backup del subserver
-        sendto(sock, msg.c_str(), strlen(msg.c_str()), 0, (struct sockaddr *)&(servers[mod]), sizeof(struct sockaddr));
-        thread th2 = thread(threadReciveACK, mod); // Se crea un thread para esperar el ACK
-
-        this_thread::sleep_for(chrono::seconds(2)); // Se espera 2 segundos
-
-        if (!th2.joinable()){ // Si el thread no se pudo unir
-            // Autosend ACK
-            sendto(sock, "UWU", strlen("UWU"), 0, (struct sockaddr *)&(server_addr), sizeof(struct sockaddr));
-            th2.join();
-            cout << "SERVER " << mod << " not online" << endl; // El backup del subserver no esta disponible
-            return;
-        }
-        else th2.join(); // El backup del subserver si esta disponible
-    }
-    else th.join(); // El subserver si esta disponible
-
-    // El servidor si recibio el mensaje
-    // LALO CODEA EL REGRESO
-    cout << "LEER" << endl;
-    string totalMsg = readSubServer(mod);
-    cout << totalMsg << endl;
-
-
-
+    char ack[packSize];
+    this_thread::sleep_for(chrono::milliseconds(100));
+    // Usamos recvfrom con MSG_DONTWAIT para que no se bloquee
+    bytes_read = recvfrom(sock,ack,1024,MSG_DONTWAIT, (struct sockaddr *)&(servers[mod]), &addr_len);
+    recived_data.assign(ack, bytes_read);
+    cout << "Recived: " << recived_data << endl;
+    
 
 }
 

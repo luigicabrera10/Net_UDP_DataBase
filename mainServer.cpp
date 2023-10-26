@@ -11,12 +11,16 @@
 #include <iostream>
 #include <thread>
 #include <vector>
+#include <math.h>
 #include <fstream>
 
 using namespace std;
 
 const int serversNum = 4;
 const int packSize = 1024;
+const int timeout = 2;
+int sequence_number = 0;
+
 
 int sock;
 socklen_t addr_len;
@@ -31,63 +35,192 @@ int checksum(const string input) {
    return checksum;
 }
 
+string to_string_parse(int num, int size = 2){
+	string s = to_string(num);
+	while(s.size() < size) s = "0" + s;
+	return s;	
+}
+
 // Funcion que valida el checksum de un mensaje (Confirma si esta correcto)
 bool validateChecksum(string msg){        
     int check = stoi(msg.substr(msg.size() - 10, 10)); // 10 ultimos caracteres son checksum
     return check ==  checksum(msg.substr(0, msg.size()-10));
 }
 
-// Funcion que envia un solo paquete a alguien y espera ACK (RDT 2)
-void sendMsg(struct sockaddr_in objSocket, string msg){
+
+// Envia paquetes individuales
+bool sendPackageRDT3(struct sockaddr_in objSocket, string msg){
+
+    char send_data[packSize];
+    char ack_data[packSize];
+    string data_str;
+
     int bytes_read;
-    char data[packSize];
-    char ack[packSize];
+    int trys = 2;
+    bool messageSent = 0;
 
-    string aux;
-    bzero(data, packSize); // Limpia el buffer
-    for (int i = 0; i < msg.size(); ++i) data[i] = msg[i];
+    // Add SeqNumber y CheckSum
+    msg = msg + to_string_parse(sequence_number++, 10);
+    msg = msg + to_string_parse(checksum(msg), 10);
 
-    while(1){
-        sendto(sock, data, strlen(data), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr)); // Send MSG
-        bytes_read = recvfrom(sock,ack,1024,MSG_WAITALL, (struct sockaddr *)&objSocket, &addr_len); // Recive ACK
-        aux.assign(ack, bytes_read); // Convertir a string
-        if (aux.substr(0,3) == "UWU") break; // Si el ACK es correcto se sale del loop
-    }
-    cout << "MSG send: " << msg << endl;    
-}
+    cout << "\nEnviando paquete: " << msg<< endl;
 
-// Funcion que recibe un solo paquete y envia ACK (RDT 2)
-string reciveMsg(struct sockaddr_in objSocket){
-    int bytes_read;
-    char data[packSize];
-    string aux;
+    bzero(send_data, packSize);
+    strncpy(send_data, msg.c_str(), min(packSize, (int) msg.size()));
 
-    while(1){
-        bytes_read = recvfrom(sock,data,1024,MSG_WAITALL, (struct sockaddr *)&objSocket, &addr_len);
-        aux.assign(data, bytes_read);
+    while (trys--){
 
-        if (validateChecksum(aux)){ // Si el checksum es correcto
-            sendto(sock, "UWU", strlen("UWU"), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr)); // SEND ACK
+        cout << "\nIntentos Restantes: " << trys +1 << endl;
+
+        // SEND MSG
+        sendto(sock, send_data, strlen(send_data), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr));
+
+        // Wait
+        this_thread::sleep_for(chrono::seconds(timeout));
+
+        // Try recive ACK 1
+        bytes_read = recvfrom(sock, ack_data, packSize, MSG_DONTWAIT, (struct sockaddr *)&objSocket, &addr_len);
+
+        if (bytes_read == -1){
+            cout << "Ningun ACK llego... Reenviando" << endl;
+            continue;
+        }
+        
+        // FIRST ACK
+        data_str.assign(ack_data, bytes_read);
+        cout << "Read str (" << data_str.size() << "): " << data_str << endl;
+        cout << "Validation: " << (bool) (stoi(data_str) == sequence_number -1) << endl;
+
+        // Try recive ACK 2
+        bytes_read = recvfrom(sock, ack_data, packSize, MSG_DONTWAIT, (struct sockaddr *)&objSocket, &addr_len);
+        
+        if (bytes_read == -1){
+            cout << "Solo 1 ACK... Enviado con exito!" << endl;
+            messageSent = 1;
             break;
-        } else{ // SEND NAK
-            sendto(sock, "UNU", strlen("UNU"), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr));
-        }  
+        }
+
+        // Second ACK
+        cout << "Dos ACK's llegaron... Reenviando" << endl;
+        data_str.assign(ack_data, bytes_read);
+        cout << "Read str (" << data_str.size() << "): " << data_str << endl;
+        cout << "Validation: " << (bool) (stoi(data_str) == sequence_number -1) << endl;
+
     }
-    cout << "MSG recived: " << aux << endl;    
-    return aux;
+    
+    return messageSent;
+
 }
+
+// Calcula numero de paquetes y divide mensaje en varios
+bool sendMsg(struct sockaddr_in objSocket, string msg){
+
+   // El msg se dividira en paquetes. Cada paquete desperdiciara:
+   // 10 bytes en checksum
+   // 10 bytes en seqNumber
+   // 3  bytes en indicar numero de paquetes restantes
+   // 1 byte en indicar protocolo
+
+   // Se le resta 24 al packsize pq cada uno gastara 10 + 10 + 3 + 1 bytes en informacion de paquetes
+   int realSize = packSize - 24;
+
+   // Se guarda el protocolo
+   char protocol = msg[0];
+
+   // Se le resta el primer caracter a msg, pq protocolo (CRUDA) va a ser incluido repetitivamente en cada paquete
+   // Ademas esto nos ayuda a calcular el numero de paquetes requeridos
+   msg = msg.substr(1, msg.size() - 1);
+
+   // calculamos el numero de paquetes requeridos
+   int numPacks = ceil( (float) msg.size() / realSize );
+
+   bool send;
+   string pack;
+
+   for (int i = 0; i < numPacks; ++i){
+
+      pack = protocol + to_string_parse(numPacks-i, 3) + msg.substr(0, realSize);
+
+      send = sendPackageRDT3(objSocket, pack);
+      if (!send) break;
+      
+      if (msg.size() > realSize) msg.substr(realSize, msg.size() - realSize); 
+
+   }
+
+   return send;
+
+}
+
+
+// Recibe paquetes individuales
+string recivePackageRDT3(struct sockaddr_in objSocket){
+
+    cout << "\nEsperando recepcion de paquete... " << endl;
+
+    int bytes_read;
+    string seqNum, pack = "";
+    char buffData[packSize];   
+
+    while (1){
+        bytes_read = recvfrom(sock, buffData, packSize, 0, (struct sockaddr *)&objSocket, &addr_len);
+        pack.assign(buffData, bytes_read);
+        seqNum = pack.substr(pack.size()-20, 10);
+
+        if (validateChecksum(pack)){ // Send 1 ACK and exit
+            sendto(sock, seqNum.c_str(), strlen(seqNum.c_str()), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr));
+            this_thread::sleep_for(chrono::seconds(timeout)); // PARA QUE NO SE ENVIE OTRO PAQUETE Y SE CONFUNDA CON 2do ACK
+            break;
+        }
+        else{ // Send 2 ACK (Corrupted Data)
+            sendto(sock, seqNum.c_str(), strlen(seqNum.c_str()), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr));
+            sendto(sock, seqNum.c_str(), strlen(seqNum.c_str()), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr));
+        }
+    }
+
+    cout << "Paquete Recepcionado: " << pack << endl;
+
+    return pack;
+
+}
+
+// Covierte un numero de paquetes en un mensaje
+string reciveMsg(struct sockaddr_in objSocket){
+
+   int packNum;
+   string pack;
+   string totalMsg = "";
+
+   // Recibimos el primer paquete
+   pack = recivePackageRDT3(objSocket);
+
+   // Le quitamos el numero de paquetes, el seqNumber y el checkSum
+   totalMsg += pack[0] + pack.substr(4, pack.size()-24);
+
+   packNum = stoi(pack.substr(1, 3));
+
+   while (--packNum){
+      pack = recivePackageRDT3(objSocket);
+      totalMsg += pack.substr(4, pack.size()-24);
+   }
+   
+   return totalMsg;
+
+}
+
+
+
 
 // Funcion que redirige el mensaje a dos servidores
 void simpleRedirect(string msg){
-
     int mod = msg[3] % serversNum; // Seleccionar el subserver
-
     sendMsg(servers[mod], msg); // Enviar el mensaje al subserver
     sendMsg(servers[(mod+1) % serversNum], msg); // Enviar el mensaje al backup del subserver
 }
 
 // Funcion que lee el mensaje del subserver
 string readSubServer(int mod){
+
     int size;
     string subMsg;
     string totalMsg;
@@ -104,53 +237,44 @@ string readSubServer(int mod){
     return totalMsg; // Regresa el mensaje completo
 }
 
-// Funcion que envia el mensaje al cliente en partes de 1024 bytes
-void sendAnswer(string msg){
 
-    string subMsg = msg.substr(0, 1014); // Seleccionar el primer mensaje de 1024 bytes
-    //subMsg = subMsg + to_string_parse(checksum(subMsg), 10);
-    sendMsg(client_addr, subMsg); // Enviar el mensaje al cliente
-
-    msg = msg.substr(1024, msg.size()- 1024); // Quitar el mensaje ya enviado
-    
-    while(msg.size()){ // Mientras queden mensajes por enviar
-        subMsg = msg.substr(0, 1024); // Seleccionar el primer mensaje de 1024 bytes
-        sendMsg(client_addr, subMsg); // Enviar el mensaje al cliente
-        msg = msg.substr(1024, msg.size() - 1024); // Quitar el mensaje ya enviado
-    }
+vector<string> parseRead(string answer){
+    vector<string> parsedAnswers;
+    return parsedAnswers;
 }
 
-// Funcion que recibe el ACK del subserver
-void threadReciveACK(int mod){
-    char ack[packSize]; 
-    cout << "Running thread" << endl;
-    int bytes_read = recvfrom(sock,ack,1024,MSG_WAITALL, (struct sockaddr *)&(servers[mod]), &addr_len);
-    cout << "Recived: " << ack << endl;
+string recursiveRead(struct sockaddr_in objSocket, string base, int maxRecursive, int deep = 0){
+
+    string answ = reciveMsg(objSocket);
+    cout << answ << endl;
+
+    return answ;
+
 }
 
 // Funcion que lee el mensaje del cliente
-void readRedirect(string msg){ 
+string readRedirect(string msg){ 
 
     // RDT3 (server turned off)
-    int bytes_read;
-    string recived_data;
-    char recv_data[packSize];
+    string answ;
+    int maxRecursive = 0;
     int mod = msg[3] % serversNum;
 
-    // Se envia la peticion al subserver
-    sendto(sock, msg.c_str(), strlen(msg.c_str()), 0, (struct sockaddr *)&(servers[mod]), sizeof(struct sockaddr));
-    char ack[packSize];
-    this_thread::sleep_for(chrono::milliseconds(100));
-    // Usamos recvfrom con MSG_DONTWAIT para que no se bloquee
-    bytes_read = recvfrom(sock,ack,1024,MSG_DONTWAIT, (struct sockaddr *)&(servers[mod]), &addr_len);
-    recived_data.assign(ack, bytes_read);
-    cout << "Recived: " << recived_data << endl;
-    
+    if (sendMsg(servers[mod], msg)){ // Servidor online
+        // Recibir msg respuesta y devolver
+        answ = recursiveRead(servers[mod], "\n", maxRecursive);
+        return answ;
+    }
+    else if (sendMsg(servers[(mod+1) % serversNum], msg)){ // Servidor backup online
+        // Recibir msg respuesta y devolver
+        answ = recursiveRead(servers[(mod+1) % serversNum], "\n", maxRecursive);
+        return answ;
+    }
+    return ""; // Ningun servidor online
 
 }
 
 void initServer(){
-
 
     if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
         perror("Socket");
@@ -182,10 +306,6 @@ void waitSubServers(){
 
     struct sockaddr_in client_addr;
 
-    // IGNORAR SUB 0
-    // sendto(sock, "OkiDoki", strlen("OkiDoki"), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr));
-    // bytes_read = recvfrom(sock,recv_data,1024,MSG_WAITALL, (struct sockaddr *)&client_addr, &addr_len);
-
     for (int i = 0; i < serversNum; ++i){
         
         bytes_read = recvfrom(sock,recv_data,1024,MSG_WAITALL, (struct sockaddr *)&(servers[i]), &addr_len);
@@ -208,11 +328,22 @@ void waitSubServers(){
 void listenClient(){
     int bytes_read;
     string recived_data;
+    string query_answ;
     char recv_data[packSize];
     while(1){
+
         recived_data = reciveMsg(client_addr);
-        if (recived_data[0] != 'R') simpleRedirect(recived_data); // Si no es read se usa simple redirect
-        else readRedirect(recived_data); // Si es read se usa read redirect
+        if (recived_data[0] != 'R') simpleRedirect(recived_data); // Si no es read se usa simpleRedirect
+        else{
+
+            query_answ = readRedirect(recived_data); // Si es read se usa readRedirect
+
+            if (query_answ == "") query_answ = "Servidores offline";
+
+            cout << "Query answ: " << query_answ << endl;
+            sendMsg(client_addr, query_answ);
+
+        }
     }
 }
 

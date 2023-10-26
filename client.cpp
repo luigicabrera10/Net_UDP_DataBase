@@ -11,6 +11,7 @@
 
 #include <iostream>
 #include <thread>
+#include <math.h>
 
 using namespace std;
 
@@ -18,18 +19,14 @@ using namespace std;
 int sock;
 socklen_t addr_len;
 struct sockaddr_in server_addr;
+
 const int packSize = 1024;
+const int timeout = 2;
 int sequence_number = 0;
 int pkt_number = 0;
 
-// Funcion que formatea un numero menor a 10
-string numberFormat (int num){
-   // Si el numero es menor a 10, le agregamos un 0 al inicio
-   if (num < 10) return "0" + to_string(num);
-   else return to_string(num);
-}
 
-string to_string_parse(int num, int size){
+string to_string_parse(int num, int size = 2){
 	string s = to_string(num);
 	while(s.size() < size) s = "0" + s;
 	return s;	
@@ -43,56 +40,172 @@ int checksum(const string input) {
 }
 
 // Funcion que valida el checksum
-bool validateChecksum(string msg){
-   cout << msg.size() << " - " << msg << endl;
-   cout << msg.substr(msg.size() - 11, 10) << endl;
-   return 1;
+bool validateChecksum(string msg){        
+   int check = stoi(msg.substr(msg.size() - 10, 10)); // 10 ultimos caracteres son checksum
+   return check ==  checksum(msg.substr(0, msg.size()-10));
 }
 
-void sendMsg(struct sockaddr_in objSocket, string msg){
-   int bytes_read;
-   char data[packSize];
-   char ack[packSize];
-   string aux;
 
-   bzero(data, packSize);
-   for (int i = 0; i < msg.size(); ++i) data[i] = msg[i];
+// Envia paquetes individuales
+bool sendPackageRDT3(struct sockaddr_in objSocket, string msg){
 
-   while(1){
-      sendto(sock, data, strlen(data), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr));
+    char send_data[packSize];
+    char ack_data[packSize];
+    string data_str;
 
-      // Wait for ACK
-      bytes_read = recvfrom(sock,ack,1024,MSG_WAITALL, (struct sockaddr *)&objSocket, &addr_len);
-      aux.assign(ack, bytes_read);
+    int bytes_read;
+    int trys = 2;
+    bool messageSent = 0;
 
-      if (aux.substr(0,3) == "UWU") break;
+    // Add SeqNumber y CheckSum
+    msg = msg + to_string_parse(sequence_number++, 10);
+    msg = msg + to_string_parse(checksum(msg), 10);
+
+    cout << "\nEnviando paquete: " << msg<< endl;
+
+    bzero(send_data, packSize);
+    strncpy(send_data, msg.c_str(), min(packSize, (int) msg.size()));
+
+    while (trys--){
+
+        cout << "\nIntentos Restantes: " << trys +1 << endl;
+
+        // SEND MSG
+        sendto(sock, send_data, strlen(send_data), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr));
+
+        // Wait
+        this_thread::sleep_for(chrono::seconds(timeout));
+
+        // Try recive ACK 1
+        bytes_read = recvfrom(sock, ack_data, packSize, MSG_DONTWAIT, (struct sockaddr *)&objSocket, &addr_len);
+
+        if (bytes_read == -1){
+            cout << "Ningun ACK llego... Reenviando" << endl;
+            continue;
+        }
+        
+        // FIRST ACK
+        data_str.assign(ack_data, bytes_read);
+        cout << "Read str (" << data_str.size() << "): " << data_str << endl;
+        cout << "Validation: " << (bool) (stoi(data_str) == sequence_number -1) << endl;
+
+        // Try recive ACK 2
+        bytes_read = recvfrom(sock, ack_data, packSize, MSG_DONTWAIT, (struct sockaddr *)&objSocket, &addr_len);
+        
+        if (bytes_read == -1){
+            cout << "Solo 1 ACK... Enviado con exito!" << endl;
+            messageSent = 1;
+            break;
+        }
+
+        // Second ACK
+        cout << "Dos ACK's llegaron... Reenviando" << endl;
+        data_str.assign(ack_data, bytes_read);
+        cout << "Read str (" << data_str.size() << "): " << data_str << endl;
+        cout << "Validation: " << (bool) (stoi(data_str) == sequence_number -1) << endl;
+
+    }
+    
+    return messageSent;
+
+}
+
+// Calcula numero de paquetes y divide mensaje en varios
+bool sendMsg(struct sockaddr_in objSocket, string msg){
+
+   // El msg se dividira en paquetes. Cada paquete desperdiciara:
+   // 10 bytes en checksum
+   // 10 bytes en seqNumber
+   // 3  bytes en indicar numero de paquetes restantes
+   // 1 byte en indicar protocolo
+
+   // Se le resta 24 al packsize pq cada uno gastara 10 + 10 + 3 + 1 bytes en informacion de paquetes
+   int realSize = packSize - 24;
+
+   // Se guarda el protocolo
+   char protocol = msg[0];
+
+   // Se le resta el primer caracter a msg, pq protocolo (CRUDA) va a ser incluido repetitivamente en cada paquete
+   // Ademas esto nos ayuda a calcular el numero de paquetes requeridos
+   msg = msg.substr(1, msg.size() - 1);
+
+   // calculamos el numero de paquetes requeridos
+   int numPacks = ceil( (float) msg.size() / realSize );
+
+   bool send;
+   string pack;
+
+   for (int i = 0; i < numPacks; ++i){
+
+      pack = protocol + to_string_parse(numPacks-i, 3) + msg.substr(0, realSize);
+
+      send = sendPackageRDT3(objSocket, pack);
+      if (!send) break;
+      
+      if (msg.size() > realSize) msg.substr(realSize, msg.size() - realSize); 
+
    }
+
+   return send;
+
 }
 
 
+// Recibe paquetes individuales
+string recivePackageRDT3(struct sockaddr_in objSocket){
+
+    cout << "\nEsperando recepcion de paquete... " << endl;
+
+    int bytes_read;
+    string seqNum, pack = "";
+    char buffData[packSize];   
+
+    while (1){
+        bytes_read = recvfrom(sock, buffData, packSize, 0, (struct sockaddr *)&objSocket, &addr_len);
+        pack.assign(buffData, bytes_read);
+        seqNum = pack.substr(pack.size()-20, 10);
+
+        if (validateChecksum(pack)){ // Send 1 ACK and exit
+            sendto(sock, seqNum.c_str(), strlen(seqNum.c_str()), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr));
+            this_thread::sleep_for(chrono::seconds(timeout)); // PARA QUE NO SE ENVIE OTRO PAQUETE Y SE CONFUNDA CON 2do ACK
+            break;
+        }
+        else{ // Send 2 ACK (Corrupted Data)
+            sendto(sock, seqNum.c_str(), strlen(seqNum.c_str()), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr));
+            sendto(sock, seqNum.c_str(), strlen(seqNum.c_str()), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr));
+        }
+    }
+
+    cout << "Paquete Recepcionado: " << pack << endl;
+
+    return pack;
+
+}
+
+// Covierte un numero de paquetes en un mensaje
 string reciveMsg(struct sockaddr_in objSocket){
 
-   int bytes_read;
-   char data[packSize];
-   string aux;
+   int packNum;
+   string pack;
+   string totalMsg = "";
 
-   while(1){
+   // Recibimos el primer paquete
+   pack = recivePackageRDT3(objSocket);
 
-      bytes_read = recvfrom(sock,data,1024,MSG_WAITALL, (struct sockaddr *)&objSocket, &addr_len);
-      aux.assign(data, bytes_read);
+   // Le quitamos el numero de paquetes, el seqNumber y el checkSum
+   totalMsg += pack[0] + pack.substr(4, pack.size()-20);
 
-      if (validateChecksum(aux)){ // SEND ACK
-         sendto(sock, "UWU", strlen("UWU"), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr));
-         break;
-      }
-      else{ // SEND NAK
-         sendto(sock, "UNU", strlen("UNU"), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr));
-      }  
+   packNum = stoi(pack.substr(1, 3));
+
+   while (--packNum){
+      pack = recivePackageRDT3(objSocket);
+      totalMsg += pack.substr(4, pack.size()-20);
    }
-
-   return aux;
    
+   return totalMsg;
+
 }
+
 
 
 // Funcion que parsea el mensaje
@@ -111,15 +224,15 @@ void parsing( char *data){
       // Obtenemos la relacion que se encuentra despues del tercer espacio
       string relation = msg.substr(pos2+1);
       // Obtenemos el numero de secuencia
-      string sequence_number_str = numberFormat(sequence_number);
+      string sequence_number_str = to_string_parse(sequence_number);
       // Obtenemos el tamaño de la cadena
       int size1 = name1.length();
       int size2 = name2.length();
       int size3 = relation.length();
       // Formateamos el tamaño de la cadena
-      string size1_str = numberFormat(size1);
-      string size2_str = numberFormat(size2);
-      string size3_str = numberFormat(size3);
+      string size1_str = to_string_parse(size1);
+      string size2_str = to_string_parse(size2);
+      string size3_str = to_string_parse(size3);
       // Imprimimos los nombres y la relacion
       cout << "Name 1: " << name1 << endl;
       cout << "Name 2: " << name2 << endl;
@@ -139,8 +252,8 @@ void parsing( char *data){
       int size1 = name1.length();
       int size2 = recurrence.length();
       // Formateamos el tamaño de la cadena
-      string size1_str = numberFormat(size1);
-      string size2_str = numberFormat(size2);
+      string size1_str = to_string_parse(size1);
+      string size2_str = to_string_parse(size2);
       // Imprimimos el nombre y la recurrencia
       cout << "Name: " << name1 << endl;
       cout << "Recurrence: " << recurrence << endl;
@@ -178,12 +291,12 @@ void parsing( char *data){
       int size5 = newName2.length();
       int size6 = newRelation.length();
       // Formateamos el tamaño de la cadena
-      string size1_str = numberFormat(size1);
-      string size2_str = numberFormat(size2);
-      string size3_str = numberFormat(size3);
-      string size4_str = numberFormat(size4);
-      string size5_str = numberFormat(size5);
-      string size6_str = numberFormat(size6);
+      string size1_str = to_string_parse(size1);
+      string size2_str = to_string_parse(size2);
+      string size3_str = to_string_parse(size3);
+      string size4_str = to_string_parse(size4);
+      string size5_str = to_string_parse(size5);
+      string size6_str = to_string_parse(size6);
       // Imprimimos los nombres y la relacion
       cout << "Name 1: " << name1 << endl;
       cout << "Name 2: " << name2 << endl;
@@ -213,9 +326,9 @@ void parsing( char *data){
          int size2 = name2.length();
          int size3 = relation.length();
          // Formateamos el tamaño de la cadena
-         string size1_str = numberFormat(size1);
-         string size2_str = numberFormat(size2);
-         string size3_str = numberFormat(size3);
+         string size1_str = to_string_parse(size1);
+         string size2_str = to_string_parse(size2);
+         string size3_str = to_string_parse(size3);
          // Imprimimos los nombres y la relacion
          cout << "Name 1: " << name1 << endl;
          cout << "Name 2: " << name2 << endl;
@@ -234,8 +347,8 @@ void parsing( char *data){
          int size1 = name1.length();
          int size2 = option.length();
          // Formateamos el tamaño de la cadena
-         string size1_str = numberFormat(size1);
-         string size2_str = numberFormat(size2);
+         string size1_str = to_string_parse(size1);
+         string size2_str = to_string_parse(size2);
          // Imprimimos el nombre y la opcion
          cout << "Name: " << name1 << endl;
          cout << "Option: " << option << endl;
@@ -251,10 +364,13 @@ void parsing( char *data){
 }
 
 void mainThread(){
+
    string msg;
    char send_data[packSize];
    bzero(send_data, packSize);
+
    while (1) {
+
       printf("\n$:");
       cin.getline(send_data, packSize);
       parsing(send_data);
@@ -264,6 +380,12 @@ void mainThread(){
       if ((strcmp(send_data , "q") == 0) || strcmp(send_data , "Q") == 0) break;
 
       sendMsg(server_addr, send_data);
+
+      if (send_data[0] == 'R'){
+         cout << "ESPERANDO DATA: " << endl;
+         msg = reciveMsg(server_addr);
+         cout << msg << endl;
+      }
 
    }
 

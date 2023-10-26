@@ -2,7 +2,7 @@ Makefile
 client.out
 mainServer.out
 subServer.out
-relaciones.tx
+relaciones.txt
 .vscode
 client.o
 mainServer.o
@@ -10,3 +10,7 @@ subServer.o
 client
 mainServer
 subServer
+testClient.cpp
+testServer.cpp
+testClient.out
+testServer.out

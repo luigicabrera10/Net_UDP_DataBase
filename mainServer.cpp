@@ -24,29 +24,25 @@ struct sockaddr_in client_addr;
 struct sockaddr_in server_addr;
 struct sockaddr_in servers[serversNum];
 
-// Funcion que convierte un numero a string con un tamaño especifico
+// Funcion que convierte una string con un numero
 int checksum(const string input) {
    int checksum = 0;
    for (int i = 0; i < input.size(); ++i) checksum += (int) input[i];
    return checksum;
 }
 
-// Funcion que comprueba el checksum de un mensaje
-bool validateChecksum(string msg){
-
-    // cout << msg.size() << " - " << msg << endl;
-    // cout << msg.substr(msg.size() - 10, 10) << endl;
-    // cout << checksum(msg.substr(0, msg.size()-10)) << endl;
-        
-    int check = stoi(msg.substr(msg.size() - 10, 10));
+// Funcion que valida el checksum de un mensaje (Confirma si esta correcto)
+bool validateChecksum(string msg){        
+    int check = stoi(msg.substr(msg.size() - 10, 10)); // 10 ultimos caracteres son checksum
     return check ==  checksum(msg.substr(0, msg.size()-10));
 }
 
-// Funcion que envia un mensaje
+// Funcion que envia un solo paquete a alguien y espera ACK (RDT 2)
 void sendMsg(struct sockaddr_in objSocket, string msg){
     int bytes_read;
     char data[packSize];
     char ack[packSize];
+
     string aux;
     bzero(data, packSize); // Limpia el buffer
     for (int i = 0; i < msg.size(); ++i) data[i] = msg[i];
@@ -58,10 +54,9 @@ void sendMsg(struct sockaddr_in objSocket, string msg){
         if (aux.substr(0,3) == "UWU") break; // Si el ACK es correcto se sale del loop
     }
     cout << "MSG send: " << msg << endl;    
-
 }
 
-// Funcion que recibe un mensaje
+// Funcion que recibe un solo paquete y envia ACK (RDT 2)
 string reciveMsg(struct sockaddr_in objSocket){
     int bytes_read;
     char data[packSize];

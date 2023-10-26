@@ -65,6 +65,8 @@ bool sendPackageRDT3(struct sockaddr_in objSocket, string msg){
     msg = msg + to_string_parse(checksum(msg), 10);
 
     cout << "\nEnviando paquete: " << msg<< endl;
+    cout << "Hacia: " <<  inet_ntoa(objSocket.sin_addr) << " - " << ntohs(objSocket.sin_port) << endl;
+
 
     bzero(send_data, packSize);
     strncpy(send_data, msg.c_str(), min(packSize, (int) msg.size()));
@@ -182,6 +184,7 @@ string recivePackageRDT3(struct sockaddr_in objSocket){
     }
 
     cout << "Paquete Recepcionado: " << pack << endl;
+    cout << "Desde: " << inet_ntoa(objSocket.sin_addr) << " - " << ntohs(objSocket.sin_port) << endl;
 
     return pack;
 

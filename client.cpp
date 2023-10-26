@@ -21,7 +21,7 @@ socklen_t addr_len;
 struct sockaddr_in server_addr;
 
 const int packSize = 1024;
-const int timeout = 2;
+const int timeout = 1;
 int sequence_number = 0;
 int pkt_number = 0;
 
@@ -62,6 +62,8 @@ bool sendPackageRDT3(struct sockaddr_in objSocket, string msg){
     msg = msg + to_string_parse(checksum(msg), 10);
 
     cout << "\nEnviando paquete: " << msg<< endl;
+    cout << "Hacia: " <<  inet_ntoa(objSocket.sin_addr) << " - " << ntohs(objSocket.sin_port) << endl;
+
 
     bzero(send_data, packSize);
     strncpy(send_data, msg.c_str(), min(packSize, (int) msg.size()));
@@ -177,6 +179,7 @@ string recivePackageRDT3(struct sockaddr_in objSocket){
     }
 
     cout << "Paquete Recepcionado: " << pack << endl;
+    cout << "Desde: " << inet_ntoa(objSocket.sin_addr) << " - " << ntohs(objSocket.sin_port) << endl;
 
     return pack;
 
@@ -193,19 +196,18 @@ string reciveMsg(struct sockaddr_in objSocket){
    pack = recivePackageRDT3(objSocket);
 
    // Le quitamos el numero de paquetes, el seqNumber y el checkSum
-   totalMsg += pack[0] + pack.substr(4, pack.size()-20);
+   totalMsg += pack[0] + pack.substr(4, pack.size()-24);
 
    packNum = stoi(pack.substr(1, 3));
 
    while (--packNum){
       pack = recivePackageRDT3(objSocket);
-      totalMsg += pack.substr(4, pack.size()-20);
+      totalMsg += pack.substr(4, pack.size()-24);
    }
    
    return totalMsg;
 
 }
-
 
 
 // Funcion que parsea el mensaje

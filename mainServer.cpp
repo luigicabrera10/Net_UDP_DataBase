@@ -18,7 +18,7 @@ using namespace std;
 
 const int serversNum = 4;
 const int packSize = 1024;
-const int timeout = 2;
+const int timeout = 1;
 int sequence_number = 0;
 
 
@@ -49,7 +49,7 @@ bool validateChecksum(string msg){
 
 
 // Envia paquetes individuales
-bool sendPackageRDT3(struct sockaddr_in objSocket, string msg){
+bool sendPackageRDT3(struct sockaddr_in &objSocket, string msg){
 
     char send_data[packSize];
     char ack_data[packSize];
@@ -64,6 +64,7 @@ bool sendPackageRDT3(struct sockaddr_in objSocket, string msg){
     msg = msg + to_string_parse(checksum(msg), 10);
 
     cout << "\nEnviando paquete: " << msg<< endl;
+    cout << "Hacia: " <<  inet_ntoa(objSocket.sin_addr) << " - " << ntohs(objSocket.sin_port) << endl;
 
     bzero(send_data, packSize);
     strncpy(send_data, msg.c_str(), min(packSize, (int) msg.size()));
@@ -113,7 +114,7 @@ bool sendPackageRDT3(struct sockaddr_in objSocket, string msg){
 }
 
 // Calcula numero de paquetes y divide mensaje en varios
-bool sendMsg(struct sockaddr_in objSocket, string msg){
+bool sendMsg(struct sockaddr_in &objSocket, string msg){
 
    // El msg se dividira en paquetes. Cada paquete desperdiciara:
    // 10 bytes en checksum
@@ -154,9 +155,9 @@ bool sendMsg(struct sockaddr_in objSocket, string msg){
 
 
 // Recibe paquetes individuales
-string recivePackageRDT3(struct sockaddr_in objSocket){
+string recivePackageRDT3(struct sockaddr_in &objSocket){
 
-    cout << "\nEsperando recepcion de paquete... " << endl;
+    cout << "\nEsperando recibir paquete... " << endl;
 
     int bytes_read;
     string seqNum, pack = "";
@@ -179,13 +180,15 @@ string recivePackageRDT3(struct sockaddr_in objSocket){
     }
 
     cout << "Paquete Recepcionado: " << pack << endl;
+    cout << "Desde: " << inet_ntoa(objSocket.sin_addr) << " - " << ntohs(objSocket.sin_port) << endl;
+
 
     return pack;
 
 }
 
 // Covierte un numero de paquetes en un mensaje
-string reciveMsg(struct sockaddr_in objSocket){
+string reciveMsg(struct sockaddr_in &objSocket){
 
    int packNum;
    string pack;

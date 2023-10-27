@@ -20,6 +20,7 @@ const int serversNum = 4;
 const int packSize = 1024;
 const int timeout = 1;
 int sequence_number = 0;
+bool onlineServers[serversNum];
 
 
 int sock;
@@ -48,16 +49,18 @@ bool validateChecksum(string msg){
 }
 
 
+
 // Envia paquetes individuales
 bool sendPackageRDT3(struct sockaddr_in &objSocket, string msg){
 
     char send_data[packSize];
     char ack_data[packSize];
-    string data_str;
+    string data_str = "";
 
     int bytes_read;
     int trys = 2;
     bool messageSent = 0;
+    bool flag; // Indica si llego ACK o no
 
     // Add SeqNumber y CheckSum
     msg = msg + to_string_parse(sequence_number++, 10);
@@ -80,22 +83,46 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, string msg){
         this_thread::sleep_for(chrono::seconds(timeout));
 
         // Try recive ACK 1
-        bytes_read = recvfrom(sock, ack_data, packSize, MSG_DONTWAIT, (struct sockaddr *)&objSocket, &addr_len);
+        do { // Descartar mesajes q no sean ACKS
+            bytes_read = recvfrom(sock, ack_data, packSize, MSG_DONTWAIT, (struct sockaddr *)&objSocket, &addr_len);
 
-        if (bytes_read == -1){
+            if (bytes_read == -1){ // NO ACK 
+                flag = 0;
+                break; 
+            }
+
+            data_str.assign(ack_data, bytes_read);
+            cout << "Read ACK str (" << data_str.size() << "): " << data_str << endl;
+            flag = data_str == to_string_parse(sequence_number -1, 10);
+            cout << "Validate SeqNum: " << flag << endl;
+            
+        } while (!flag);
+
+
+        if (!flag){ // NO ACK (bytes_read == -1)
             cout << "Ningun ACK llego... Reenviando" << endl;
             continue;
         }
-        
-        // FIRST ACK
-        data_str.assign(ack_data, bytes_read);
-        cout << "Read str (" << data_str.size() << "): " << data_str << endl;
-        cout << "Validation: " << (bool) (stoi(data_str) == sequence_number -1) << endl;
+
 
         // Try recive ACK 2
-        bytes_read = recvfrom(sock, ack_data, packSize, MSG_DONTWAIT, (struct sockaddr *)&objSocket, &addr_len);
-        
-        if (bytes_read == -1){
+        do { // Descartar mesajes q no sean ACKS
+            bytes_read = recvfrom(sock, ack_data, packSize, MSG_DONTWAIT, (struct sockaddr *)&objSocket, &addr_len);
+
+            if (bytes_read == -1){ // NO ACK 
+                flag = 0;
+                break; 
+            }
+
+            data_str.assign(ack_data, bytes_read);
+            cout << "Read ACK str (" << data_str.size() << "): " << data_str << endl;
+            flag = data_str == to_string_parse(sequence_number -1, 10);
+            cout << "Validate SeqNum: " << flag << endl;
+            
+        } while (!flag);
+
+
+        if (!flag){ // NO ACK 2 (bytes_read == -1)
             cout << "Solo 1 ACK... Enviado con exito!" << endl;
             messageSent = 1;
             break;
@@ -105,7 +132,7 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, string msg){
         cout << "Dos ACK's llegaron... Reenviando" << endl;
         data_str.assign(ack_data, bytes_read);
         cout << "Read str (" << data_str.size() << "): " << data_str << endl;
-        cout << "Validation: " << (bool) (stoi(data_str) == sequence_number -1) << endl;
+        cout << "Validation: " << (bool) (data_str == to_string_parse(sequence_number -1, 10)) << endl;
 
     }
     
@@ -137,15 +164,21 @@ bool sendMsg(struct sockaddr_in &objSocket, string msg){
     bool send;
     string pack;
 
-    for (int i = 0; i < numPacks; ++i){
-        // El pack se compone de: protocolo + numPacks + msg
-        pack = protocol + to_string_parse(numPacks-i, 3) + msg.substr(0, realSize);
-        // Se envia el paquete
-        send = sendPackageRDT3(objSocket, pack);
-        if (!send) break; // Si no se envio el paquete, se sale del loop
-        if (msg.size() > realSize) msg.substr(realSize, msg.size() - realSize);  // Si aun hay msg, se actualiza
-    }
-    return send;
+   for (int i = 0; i < numPacks; ++i){
+
+      pack = protocol + to_string_parse(numPacks-i, 3) + msg.substr(0, realSize);
+
+      send = sendPackageRDT3(objSocket, pack);
+      if (!send) break;
+      
+    //   this_thread::sleep_for(chrono::seconds(timeout)); // ESPERA A QUE PROCESEN COSAS :c
+
+      if (msg.size() > realSize) msg.substr(realSize, msg.size() - realSize); 
+
+   }
+
+   return send;
+
 }
 
 
@@ -241,10 +274,72 @@ vector<string> parseRead(string answer){
     return parsedAnswers;
 }
 
-string recursiveRead(struct sockaddr_in objSocket, string base, int maxRecursive, int deep = 0){
-    string answ = reciveMsg(objSocket); // Recibir msg respuesta
-    cout << answ << endl; // Imprimir msg respuesta
-    return answ;
+string recursiveRead(string base, string query, int maxRecursive, int deep = 0){
+
+    // Max recursion
+    if (deep > maxRecursive) return base;
+
+    // Check for online servers
+    int mod = query[0] % serversNum;
+    if (!onlineServers[mod]) {
+        mod = (mod+1)%serversNum;
+        if (!onlineServers[mod]) return base; // No server online for that query
+    }
+
+    // Set tabs
+    string tabs = "";
+    for (int i = 0; i < deep+1; ++i) tabs += "\t";
+
+    // Send Query
+    string querySubServer = "R" + to_string_parse(query.size(), 2) + query;
+    cout << "Sending SubServerQuery: " << querySubServer << endl;
+    sendMsg(servers[mod], querySubServer);
+
+    // Recive the answer (all relations of query)
+    // all results separated by ";"
+    string rawAnsw = reciveMsg(servers[mod]); 
+    cout << "RAW ANSW: " << rawAnsw << endl;
+
+    // Parse protocols
+    int size = stoi(rawAnsw.substr(1, 4));
+    string answ = rawAnsw.substr(5, size);
+    cout << "SemiParsed ANSW: " << answ << endl;
+
+    // Parse answ
+    string aux = "";
+    vector <string> parsedAns;
+    for (int i = 0; i < answ.size(); ++i){
+        if (answ[i] == ';'){
+            parsedAns.push_back(aux);
+            aux = "";
+        }
+        else aux += answ[i];
+    }
+
+    // No relations:
+    if (parsedAns[0] == "") return base;
+
+    // Print parsed answers
+    cout << "Parsed Answers: " << endl;
+    for (int i = 0; i < parsedAns.size(); ++i) cout << parsedAns[i] << endl; 
+
+    // Add parsed answers to base (and follow recursivity)
+    string newQuery;
+    for (int i = 0; i < parsedAns.size(); ++i){
+        // Add relation
+        base += tabs + parsedAns[i] + "\n";
+
+        // Get Name2 (next Query)
+        newQuery = "";
+        for (int j = 0; j < parsedAns[i].size(); ++j){
+            if (parsedAns[i][j] == ' ') break;
+            newQuery += parsedAns[i][j];
+        }
+
+        base = recursiveRead(base, newQuery, maxRecursive, deep+1);
+    }
+
+    return base;
 
 }
 
@@ -253,20 +348,27 @@ string readRedirect(string msg){
 
     // RDT3 (server turned off)
     string answ;
-    int maxRecursive = 0;
     int mod = msg[3] % serversNum;
 
-    if (sendMsg(servers[mod], msg)){ // Servidor online
-        // Recibir msg respuesta y devolver
-        answ = recursiveRead(servers[mod], "\n", maxRecursive);
-        return answ;
+    // Parsear la query
+    int size1 = stoi(msg.substr(1, 2));
+    string query = msg.substr(3, size1);
+    int size2 = stoi(msg.substr(3 + size1, 2));
+    int maxRecursive = stoi(msg.substr(3 + size1 + 2, size2));
+
+    // Check SubServers online
+    for (int i = 0; i < serversNum; ++i){
+        onlineServers[i] = sendMsg(servers[i], "T00");
+        cout << "Server " << i << " online? : " << onlineServers[i] <<endl;
     }
-    else if (sendMsg(servers[(mod+1) % serversNum], msg)){ // Servidor backup online
-        // Recibir msg respuesta y devolver
-        answ = recursiveRead(servers[(mod+1) % serversNum], "\n", maxRecursive);
-        return answ;
-    }
-    return ""; // Ningun servidor online
+
+    // Print the parsed query
+    cout << "\nREAD QUERY: " << query << endl;
+    cout << "MaxRecursion: " << maxRecursive << endl;
+
+    answ = recursiveRead("\n", query, maxRecursive);
+    
+    return query + answ; 
 
 }
 
@@ -314,9 +416,11 @@ void waitSubServers(){
         }
         else{
             cout << "SubServer " << i <<  ": " << recived_data << " " << inet_ntoa(servers[i].sin_addr) << " " << ntohs(servers[i].sin_port) << endl;
+            onlineServers[i] = 1;
         }
 
     }
+
 
 }
 
@@ -334,10 +438,8 @@ void listenClient(){
 
             query_answ = readRedirect(recived_data); // Si es read se usa readRedirect
 
-            if (query_answ == "") query_answ = "Servidores offline";
-
             cout << "Query answ: " << query_answ << endl;
-            sendMsg(client_addr, query_answ);
+            sendMsg(client_addr, "A" + to_string_parse(query_answ.size(), 4) + query_answ);
 
         }
     }

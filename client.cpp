@@ -308,7 +308,6 @@ void parsing( char *data){
       cout << "New Relation: " << newRelation << endl;
       // Guardamos en el char "U" + tamaño1 + nombre1 + tamaño2 + nombre2 + tamaño3 + relacion + tamaño4 + newName1 + tamaño5 + newName2 + tamaño6 + newRelation
       string new_char = "U" + size1_str + name1 + size2_str + name2 + size3_str + relation + size4_str + newName1 + size5_str + newName2 + size6_str + newRelation;
-      new_char = new_char + to_string_parse(checksum(new_char), 10) + '\0';
       strcpy(data, new_char.c_str());
    } else if (msg[0] == 'D'){
       // Buscamos segundo espacio
@@ -337,8 +336,6 @@ void parsing( char *data){
          cout << "Relation: " << relation << endl;
          // Guardamos en el char "D" + tamaño1 + nombre1 + tamaño2 + nombre2 + tamaño3 + relacion
          string new_char = "D" + size1_str + name1 + size2_str + name2 + size3_str + relation;
-         new_char = new_char + to_string_parse(checksum(new_char), 10) + '\0';
-
          strcpy(data, new_char.c_str());
       } else {
          // Obtenemos el primer nombre que se encuentra antes del segundo espacio
@@ -356,8 +353,6 @@ void parsing( char *data){
          cout << "Option: " << option << endl;
          // Guardamos en el char "D" + tamaño1 + nombre1 + tamaño2 + opcion
          string new_char = "D" + size1_str + name1 + size2_str + option;
-         new_char = new_char + to_string_parse(checksum(new_char), 10) + '\0';
-
          strcpy(data, new_char.c_str());
       }
 

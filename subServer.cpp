@@ -268,7 +268,7 @@ string read(string name1){
     }
 
     for (int i = 0; i < Data[name1].size(); ++i){
-        ans += Data[name1][i].first + " " + Data[name1][i].second + ";";
+        ans += Data[name1][i].first + " " + Data[name1][i].second + ";" + "\n";
     }
 
     ans = ans.substr(0, ans.size()-1);

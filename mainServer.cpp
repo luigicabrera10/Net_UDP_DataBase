@@ -64,12 +64,12 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, string msg){
     msg = msg + to_string_parse(checksum(msg), 10);
 
     cout << "\nEnviando paquete: " << msg<< endl;
-    cout << "Hacia: " <<  inet_ntoa(objSocket.sin_addr) << " - " << ntohs(objSocket.sin_port) << endl;
+    cout << "Hacia: " <<  inet_ntoa(objSocket.sin_addr) << " - " << ntohs(objSocket.sin_port) << endl; // IP y puerto
 
     bzero(send_data, packSize);
-    strncpy(send_data, msg.c_str(), min(packSize, (int) msg.size()));
+    strncpy(send_data, msg.c_str(), min(packSize, (int) msg.size())); // Copiar msg a send_data
 
-    while (trys--){
+    while (trys--){ // Try 3 times
 
         cout << "\nIntentos Restantes: " << trys +1 << endl;
 
@@ -114,43 +114,38 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, string msg){
 }
 
 // Calcula numero de paquetes y divide mensaje en varios
-bool sendMsg(struct sockaddr_in &objSocket, string msg){
+bool sendMsg(struct sockaddr_in &objSocket, string msg){   
+    // El msg se dividira en paquetes. Cada paquete desperdiciara:
+    // 10 bytes en checksum
+    // 10 bytes en seqNumber
+    // 3  bytes en indicar numero de paquetes restantes
+    // 1 byte en indicar protocolo
 
-   // El msg se dividira en paquetes. Cada paquete desperdiciara:
-   // 10 bytes en checksum
-   // 10 bytes en seqNumber
-   // 3  bytes en indicar numero de paquetes restantes
-   // 1 byte en indicar protocolo
+    // Se le resta 24 al packsize pq cada uno gastara 10 + 10 + 3 + 1 bytes en informacion de paquetes
+    int realSize = packSize - 24;
 
-   // Se le resta 24 al packsize pq cada uno gastara 10 + 10 + 3 + 1 bytes en informacion de paquetes
-   int realSize = packSize - 24;
+    // Se guarda el protocolo
+    char protocol = msg[0];
 
-   // Se guarda el protocolo
-   char protocol = msg[0];
+    // Se le resta el primer caracter a msg, pq protocolo (CRUDA) va a ser incluido repetitivamente en cada paquete
+    // Ademas esto nos ayuda a calcular el numero de paquetes requeridos
+    msg = msg.substr(1, msg.size() - 1);
 
-   // Se le resta el primer caracter a msg, pq protocolo (CRUDA) va a ser incluido repetitivamente en cada paquete
-   // Ademas esto nos ayuda a calcular el numero de paquetes requeridos
-   msg = msg.substr(1, msg.size() - 1);
+    // calculamos el numero de paquetes requeridos
+    int numPacks = ceil( (float) msg.size() / realSize );
 
-   // calculamos el numero de paquetes requeridos
-   int numPacks = ceil( (float) msg.size() / realSize );
+    bool send;
+    string pack;
 
-   bool send;
-   string pack;
-
-   for (int i = 0; i < numPacks; ++i){
-
-      pack = protocol + to_string_parse(numPacks-i, 3) + msg.substr(0, realSize);
-
-      send = sendPackageRDT3(objSocket, pack);
-      if (!send) break;
-      
-      if (msg.size() > realSize) msg.substr(realSize, msg.size() - realSize); 
-
-   }
-
-   return send;
-
+    for (int i = 0; i < numPacks; ++i){
+        // El pack se compone de: protocolo + numPacks + msg
+        pack = protocol + to_string_parse(numPacks-i, 3) + msg.substr(0, realSize);
+        // Se envia el paquete
+        send = sendPackageRDT3(objSocket, pack);
+        if (!send) break; // Si no se envio el paquete, se sale del loop
+        if (msg.size() > realSize) msg.substr(realSize, msg.size() - realSize);  // Si aun hay msg, se actualiza
+    }
+    return send;
 }
 
 
@@ -179,7 +174,7 @@ string recivePackageRDT3(struct sockaddr_in &objSocket){
         }
     }
 
-    cout << "Paquete Recepcionado: " << pack << endl;
+    cout << "Paquete Recepcionado: " << endl << pack << endl;
     cout << "Desde: " << inet_ntoa(objSocket.sin_addr) << " - " << ntohs(objSocket.sin_port) << endl;
 
 
@@ -247,10 +242,8 @@ vector<string> parseRead(string answer){
 }
 
 string recursiveRead(struct sockaddr_in objSocket, string base, int maxRecursive, int deep = 0){
-
-    string answ = reciveMsg(objSocket);
-    cout << answ << endl;
-
+    string answ = reciveMsg(objSocket); // Recibir msg respuesta
+    cout << answ << endl; // Imprimir msg respuesta
     return answ;
 
 }

@@ -46,16 +46,18 @@ bool validateChecksum(string msg){
 }
 
 
+
 // Envia paquetes individuales
-bool sendPackageRDT3(struct sockaddr_in objSocket, string msg){
+bool sendPackageRDT3(struct sockaddr_in &objSocket, string msg){
 
     char send_data[packSize];
     char ack_data[packSize];
-    string data_str;
+    string data_str = "";
 
     int bytes_read;
     int trys = 2;
     bool messageSent = 0;
+    bool flag; // Indica si llego ACK o no
 
     // Add SeqNumber y CheckSum
     msg = msg + to_string_parse(sequence_number++, 10);
@@ -63,7 +65,6 @@ bool sendPackageRDT3(struct sockaddr_in objSocket, string msg){
 
     cout << "\nEnviando paquete: " << msg<< endl;
     cout << "Hacia: " <<  inet_ntoa(objSocket.sin_addr) << " - " << ntohs(objSocket.sin_port) << endl;
-
 
     bzero(send_data, packSize);
     strncpy(send_data, msg.c_str(), min(packSize, (int) msg.size()));
@@ -79,22 +80,46 @@ bool sendPackageRDT3(struct sockaddr_in objSocket, string msg){
         this_thread::sleep_for(chrono::seconds(timeout));
 
         // Try recive ACK 1
-        bytes_read = recvfrom(sock, ack_data, packSize, MSG_DONTWAIT, (struct sockaddr *)&objSocket, &addr_len);
+        do { // Descartar mesajes q no sean ACKS
+            bytes_read = recvfrom(sock, ack_data, packSize, MSG_DONTWAIT, (struct sockaddr *)&objSocket, &addr_len);
 
-        if (bytes_read == -1){
+            if (bytes_read == -1){ // NO ACK 
+                flag = 0;
+                break; 
+            }
+
+            data_str.assign(ack_data, bytes_read);
+            cout << "Read ACK str (" << data_str.size() << "): " << data_str << endl;
+            flag = data_str == to_string_parse(sequence_number -1, 10);
+            cout << "Validate SeqNum: " << flag << endl;
+            
+        } while (!flag);
+
+
+        if (!flag){ // NO ACK (bytes_read == -1)
             cout << "Ningun ACK llego... Reenviando" << endl;
             continue;
         }
-        
-        // FIRST ACK
-        data_str.assign(ack_data, bytes_read);
-        cout << "Read str (" << data_str.size() << "): " << data_str << endl;
-        cout << "Validation: " << (bool) (stoi(data_str) == sequence_number -1) << endl;
+
 
         // Try recive ACK 2
-        bytes_read = recvfrom(sock, ack_data, packSize, MSG_DONTWAIT, (struct sockaddr *)&objSocket, &addr_len);
-        
-        if (bytes_read == -1){
+        do { // Descartar mesajes q no sean ACKS
+            bytes_read = recvfrom(sock, ack_data, packSize, MSG_DONTWAIT, (struct sockaddr *)&objSocket, &addr_len);
+
+            if (bytes_read == -1){ // NO ACK 
+                flag = 0;
+                break; 
+            }
+
+            data_str.assign(ack_data, bytes_read);
+            cout << "Read ACK str (" << data_str.size() << "): " << data_str << endl;
+            flag = data_str == to_string_parse(sequence_number -1, 10);
+            cout << "Validate SeqNum: " << flag << endl;
+            
+        } while (!flag);
+
+
+        if (!flag){ // NO ACK 2 (bytes_read == -1)
             cout << "Solo 1 ACK... Enviado con exito!" << endl;
             messageSent = 1;
             break;
@@ -104,7 +129,7 @@ bool sendPackageRDT3(struct sockaddr_in objSocket, string msg){
         cout << "Dos ACK's llegaron... Reenviando" << endl;
         data_str.assign(ack_data, bytes_read);
         cout << "Read str (" << data_str.size() << "): " << data_str << endl;
-        cout << "Validation: " << (bool) (stoi(data_str) == sequence_number -1) << endl;
+        cout << "Validation: " << (bool) (data_str == to_string_parse(sequence_number -1, 10)) << endl;
 
     }
     
@@ -113,7 +138,7 @@ bool sendPackageRDT3(struct sockaddr_in objSocket, string msg){
 }
 
 // Calcula numero de paquetes y divide mensaje en varios
-bool sendMsg(struct sockaddr_in objSocket, string msg){
+bool sendMsg(struct sockaddr_in &objSocket, string msg){
 
    // El msg se dividira en paquetes. Cada paquete desperdiciara:
    // 10 bytes en checksum
@@ -143,6 +168,9 @@ bool sendMsg(struct sockaddr_in objSocket, string msg){
 
       send = sendPackageRDT3(objSocket, pack);
       if (!send) break;
+
+      // this_thread::sleep_for(chrono::seconds(timeout)); // ESPERA A QUE PROCESEN COSAS :c
+
       
       if (msg.size() > realSize) msg.substr(realSize, msg.size() - realSize); 
 
@@ -154,7 +182,7 @@ bool sendMsg(struct sockaddr_in objSocket, string msg){
 
 
 // Recibe paquetes individuales
-string recivePackageRDT3(struct sockaddr_in objSocket){
+string recivePackageRDT3(struct sockaddr_in &objSocket){
 
     cout << "\nEsperando recepcion de paquete... " << endl;
 
@@ -186,7 +214,7 @@ string recivePackageRDT3(struct sockaddr_in objSocket){
 }
 
 // Covierte un numero de paquetes en un mensaje
-string reciveMsg(struct sockaddr_in objSocket){
+string reciveMsg(struct sockaddr_in &objSocket){
 
    int packNum;
    string pack;
@@ -386,7 +414,8 @@ void mainThread(){
       if (send_data[0] == 'R'){
          cout << "ESPERANDO DATA: " << endl;
          msg = reciveMsg(server_addr);
-         cout << msg << endl;
+         // cout << msg << endl;
+         cout << msg.substr(5, msg.size() - 5) << endl;
       }
 
    }

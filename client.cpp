@@ -21,7 +21,7 @@ socklen_t addr_len;
 struct sockaddr_in server_addr;
 
 const int packSize = 1024;
-const int timeout = 1;
+const int timeout = 100;
 int sequence_number = 0;
 int pkt_number = 0;
 
@@ -77,7 +77,7 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, string msg){
         sendto(sock, send_data, strlen(send_data), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr));
 
         // Wait
-        this_thread::sleep_for(chrono::seconds(timeout));
+        this_thread::sleep_for(std::chrono::milliseconds(timeout));
 
         // Try recive ACK 1
         do { // Descartar mesajes q no sean ACKS
@@ -197,7 +197,7 @@ string recivePackageRDT3(struct sockaddr_in &objSocket){
 
         if (validateChecksum(pack)){ // Send 1 ACK and exit
             sendto(sock, seqNum.c_str(), strlen(seqNum.c_str()), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr));
-            this_thread::sleep_for(chrono::seconds(timeout)); // PARA QUE NO SE ENVIE OTRO PAQUETE Y SE CONFUNDA CON 2do ACK
+            this_thread::sleep_for(std::chrono::milliseconds(timeout)); // PARA QUE NO SE ENVIE OTRO PAQUETE Y SE CONFUNDA CON 2do ACK
             break;
         }
         else{ // Send 2 ACK (Corrupted Data)

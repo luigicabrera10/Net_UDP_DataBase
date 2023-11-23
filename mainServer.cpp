@@ -8,6 +8,45 @@ struct sockaddr_in server_addr;
 struct sockaddr_in servers[serversNum];
 
 
+// KeepAlive Function (thread)
+void keepAlive(){
+
+    int bytes_read;
+    char sendData[packSize];
+    char AnswData[packSize];
+    string data_str;
+
+    bzero(sendData, packSize);
+    strncpy(sendData, keepAliveStr.c_str(), (int) keepAliveStr.size());
+
+    while (1){
+
+        this_thread::sleep_for(chrono::seconds(keepAliveSecs));
+
+        for (int i = 0; i < serversNum; ++i){
+            sendto(sock, sendData, strlen(sendData), 0, 
+                   (struct sockaddr *)&(servers[i]), sizeof(struct sockaddr));
+
+            this_thread::sleep_for(chrono::milliseconds(keepAliveSecs * 100)); // Wait Respond?
+
+            bytes_read = recvfrom(sock, AnswData, packSize, MSG_DONTWAIT, (struct sockaddr *)&(servers[i]), &addr_len);
+
+            if (bytes_read == -1) onlineServers[i] = 0;
+            else{
+                data_str.assign(AnswData, bytes_read);
+                onlineServers[i] = (bool) (data_str == keepAliveStrAnsw);
+            }
+            
+        }
+
+        cout << "\nKeepAlive: ";
+        for (int i = 0; i < serversNum; ++i) cout << onlineServers[serversNum] << " ";
+        cout << endl;
+
+    }
+}
+
+
 // Funcion que redirige el mensaje a dos servidores
 void simpleRedirect(string msg){
     int mod = msg[3] % serversNum; // Seleccionar el subserver
@@ -216,8 +255,9 @@ int main(){
 
     // Esperar 4 servidores para insertar datos
     waitSubServers();
-
     cout << "ALL SUBSERVERS READY" << endl;
+
+    // thread(keepAlive).detach();
 
     // listen client
     listenClient();

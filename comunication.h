@@ -27,6 +27,11 @@ int sequence_number = 0;
 int sock;
 socklen_t addr_len;
 
+// Keep Alive data
+const int keepAliveSecs = 2;
+string keepAliveStr = "RUAlive?";
+string keepAliveStrAnsw = "OkiDoki";
+
 
 // Aux Functions ------------------------------------------------------------------------------------
 

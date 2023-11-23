@@ -147,10 +147,10 @@ void initSubServer(){
 
 void sayHi(){
     
-    string okidoki = "OkiDoki";
     char send_data[packSize];
     bzero(send_data, packSize);
-    for (int i = 0; i < okidoki.size(); ++i) send_data[i] = okidoki[i];
+    
+    for (int i = 0; i < keepAliveStrAnsw.size(); ++i) send_data[i] = keepAliveStrAnsw[i];
 
     sendto(sock, send_data, strlen(send_data), 0, (struct sockaddr *)&server_addr, sizeof(struct sockaddr));
 }
@@ -164,6 +164,11 @@ void listenQuerys(){
     while(1){
 
         recived_data = reciveMsg(server_addr);
+
+        // if (recived_data == keepAliveStr){ // Keep alive???
+        //     sayHi();
+        //     return;
+        // }
 
         // Parsing
         parsing(recived_data);      

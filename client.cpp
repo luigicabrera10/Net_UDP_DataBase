@@ -159,7 +159,23 @@ void parsing( char *data){
    
 }
 
-void mainThread(){
+void initServerConection(){
+   struct hostent *host = (struct hostent *) gethostbyname((char *)"127.0.0.1");
+
+   if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1){
+      perror("socket");
+      exit(1);
+   }
+
+   server_addr.sin_family = AF_INET;
+   server_addr.sin_port = htons(5000);
+   server_addr.sin_addr = *((struct in_addr *)host->h_addr);
+   bzero(&(server_addr.sin_zero),8);
+}
+
+int main(){
+
+   initServerConection();
 
    string msg;
    char send_data[packSize];
@@ -177,32 +193,12 @@ void mainThread(){
 
       sendMsg(server_addr, send_data);
 
-      if (send_data[0] == 'R'){
+      if (send_data[0] == 'R'){ // Lectura espera por respuesta
          cout << "ESPERANDO DATA: " << endl;
          msg = reciveMsg(server_addr);
-         // cout << msg << endl;
          cout << msg.substr(5, msg.size() - 5) << endl;
       }
 
    }
-
-}
-
-
-int main(){
-
-   struct hostent *host = (struct hostent *) gethostbyname((char *)"127.0.0.1");
-
-   if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1){
-      perror("socket");
-      exit(1);
-   }
-
-   server_addr.sin_family = AF_INET;
-   server_addr.sin_port = htons(5000);
-   server_addr.sin_addr = *((struct in_addr *)host->h_addr);
-   bzero(&(server_addr.sin_zero),8);
-
-   mainThread();
 
 }

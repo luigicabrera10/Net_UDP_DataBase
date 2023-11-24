@@ -2,6 +2,7 @@
 
 const int serversNum = 4;
 bool onlineServers[serversNum];
+mutex querySubServers[serversNum];
 
 struct sockaddr_in client_addr;
 struct sockaddr_in server_addr;
@@ -47,36 +48,22 @@ void keepAlive(){
 }
 
 
+bool sendMsgToSubServer(int index, string msg){
+
+    bool answ;
+
+    querySubServers[index].lock();
+    answ = sendMsg(servers[index], msg);
+    querySubServers[index].unlock();
+
+    return answ;
+}
+
 // Funcion que redirige el mensaje a dos servidores
 void simpleRedirect(string msg){
     int mod = msg[3] % serversNum; // Seleccionar el subserver
-    sendMsg(servers[mod], msg); // Enviar el mensaje al subserver
-    sendMsg(servers[(mod+1) % serversNum], msg); // Enviar el mensaje al backup del subserver
-}
-
-// Funcion que lee el mensaje del subserver
-string readSubServer(int mod){
-
-    int size;
-    string subMsg;
-    string totalMsg;
-    subMsg = reciveMsg(servers[mod]);
-    totalMsg = subMsg;
-
-    size = stoi(subMsg.substr(1, 7) ) - (subMsg.size() - 1 - 7 - 10); // Tamaño del mensaje - (header + checksum)
-
-    while (size > 0){
-        subMsg = reciveMsg(servers[mod]);
-        totalMsg += subMsg;
-        size -= (subMsg.size() - 10);
-    }
-    return totalMsg; // Regresa el mensaje completo
-}
-
-
-vector<string> parseRead(string answer){
-    vector<string> parsedAnswers;
-    return parsedAnswers;
+    sendMsgToSubServer(mod, msg);
+    sendMsgToSubServer((mod+1) % serversNum, msg);
 }
 
 string recursiveRead(string base, string query, int maxRecursive, int deep = 0){
@@ -98,17 +85,21 @@ string recursiveRead(string base, string query, int maxRecursive, int deep = 0){
     // Send Query
     string querySubServer = "R" + to_string_parse(query.size(), 2) + query;
     cout << "Sending SubServerQuery: " << querySubServer << endl;
-    sendMsg(servers[mod], querySubServer);
+    
+    // sendMsg(servers[mod], querySubServer);
+    if (!sendMsgToSubServer(mod, querySubServer)){ // Si no se envio msg, usar backup (Modificable con keep alive)
+        sendMsgToSubServer((mod+1)%serversNum, querySubServer);
+    }
 
     // Recive the answer (all relations of query)
     // all results separated by ";"
     string rawAnsw = reciveMsg(servers[mod]); 
-    cout << "RAW ANSW: " << rawAnsw << endl;
+    // cout << "RAW ANSW: " << rawAnsw << endl;
 
     // Parse protocols
     int size = stoi(rawAnsw.substr(1, 4));
     string answ = rawAnsw.substr(5, size);
-    cout << "SemiParsed ANSW: " << answ << endl;
+    // cout << "SemiParsed ANSW: " << answ << endl;
 
     // Parse answ
     string aux = "";
@@ -125,8 +116,8 @@ string recursiveRead(string base, string query, int maxRecursive, int deep = 0){
     if (parsedAns[0] == "") return base;
 
     // Print parsed answers
-    cout << "Parsed Answers: " << endl;
-    for (int i = 0; i < parsedAns.size(); ++i) cout << parsedAns[i] << endl; 
+    // cout << "Parsed Answers: " << endl;
+    // for (int i = 0; i < parsedAns.size(); ++i) cout << parsedAns[i] << endl; 
 
     // Add parsed answers to base (and follow recursivity)
     string newQuery;
@@ -160,12 +151,6 @@ string readRedirect(string msg){
     string query = msg.substr(3, size1);
     int size2 = stoi(msg.substr(3 + size1, 2));
     int maxRecursive = stoi(msg.substr(3 + size1 + 2, size2));
-
-    // Check SubServers online
-    for (int i = 0; i < serversNum; ++i){
-        onlineServers[i] = sendMsg(servers[i], "T00");
-        cout << "Server " << i << " online? : " << onlineServers[i] <<endl;
-    }
 
     // Print the parsed query
     cout << "\nREAD QUERY: " << query << endl;
@@ -228,7 +213,7 @@ void waitSubServers(){
 }
 
 // Funcion que escucha al cliente
-void listenClient(){
+void listenClients(){
     int bytes_read;
     string recived_data;
     string query_answ;
@@ -254,13 +239,13 @@ int main(){
     initServer();
 
     // Esperar 4 servidores para insertar datos
-    waitSubServers();
-    cout << "ALL SUBSERVERS READY" << endl;
+    waitSubServers();                           // May be deleted with keepAlive()
+    cout << "ALL SUBSERVERS READY" << endl;     // May be deleted with keepAlive()
 
     // thread(keepAlive).detach();
 
     // listen client
-    listenClient();
+    listenClients();
 
     return 0;
 }

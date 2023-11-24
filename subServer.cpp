@@ -2,7 +2,6 @@
 
 struct sockaddr_in server_addr;
 map< string, vector< pair<string, string> > > Data;
-mutex mtx; // mutex to access data
 
 void insert(string name1, string name2, string relation){
 
@@ -80,8 +79,6 @@ void Update(string name1, string name2, string relation, string newName1, string
 
 void parsing(string msg){
 
-    mtx.lock();
-
     if(msg[0] == 'C'){
         int size1 = stoi(msg.substr(1, 2));
         string name1 = msg.substr(3, size1);
@@ -129,8 +126,6 @@ void parsing(string msg){
         // return; // to unlock mutex
     }
 
-    mtx.unlock();
-
 }
 
 
@@ -171,8 +166,7 @@ void listenQuerys(){
         recived_data = reciveMsg(server_addr);
 
         // Parsing
-        if (recived_data[0] == 'R') parsing(recived_data); // (DOBLE RECIV FROM)
-        else thread(parsing, recived_data).detach();
+        parsing(recived_data); 
 
     }
 

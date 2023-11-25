@@ -21,12 +21,14 @@
 using namespace std;
 
 // Globals ------------------------------------------------------------------------------------------
+int basePort = 5000;
+const int serversNum = 4;
 const int packSize = 1024;
 const int timeout = 50;
 int sequence_number = 0;
 
-int sock;
-socklen_t addr_len;
+// int sock; // No more need
+// struct sockaddr_in server_addr; // IDK IF THIS IS OKAY
 
 // Keep Alive data
 const int keepAliveSecs = 2;
@@ -34,7 +36,45 @@ string keepAliveStr = "RUAlive?";
 string keepAliveStrAnsw = "OkiDoki";
 
 
-// Aux Functions ------------------------------------------------------------------------------------
+// SOCKETS Functions --------------------------------------------------------------------------------
+
+// init Socket Function
+void initSocket(int &sockRef, struct sockaddr_in &objSocket, socklen_t &addr_len, int port){
+    if ((sockRef = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
+        perror("Socket err");
+        exit(1);
+    }
+
+    objSocket.sin_family = AF_INET;
+    objSocket.sin_port = htons(port);
+    objSocket.sin_addr.s_addr = INADDR_ANY;
+    bzero(&(objSocket.sin_zero),8);
+
+    if (bind(sockRef,(struct sockaddr *)&objSocket, sizeof(struct sockaddr)) == -1)  {
+        perror("Bind");
+        exit(1);
+    }
+
+    addr_len = sizeof(struct sockaddr);
+}
+
+void connectToSocket(int &sock, struct sockaddr_in &objSocket, int port){
+    struct hostent *host = (struct hostent *) gethostbyname((char *)"127.0.0.1");
+
+    if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1){
+        perror("socket");
+        exit(1);
+    }
+
+    objSocket.sin_family = AF_INET;
+    objSocket.sin_port = htons(port);
+    objSocket.sin_addr = *((struct in_addr *)host->h_addr);
+    bzero(&(objSocket.sin_zero),8);
+}
+
+
+
+// AUX Functions ------------------------------------------------------------------------------------
 
 // Funcion que convierte una string con un numero
 int checksum(const string input) {
@@ -60,7 +100,7 @@ bool validateChecksum(string msg){
 // SEND ---------------------------------------------------------------------------------------------
 
 // Envia paquetes individuales
-bool sendPackageRDT3(struct sockaddr_in &objSocket, string msg){
+bool sendPackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, string msg, int sock){
 
     char send_data[packSize];
     char ack_data[packSize];
@@ -93,7 +133,7 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, string msg){
 
         // Try recive ACK 1
         do { // Descartar mesajes q no sean ACKS
-            bytes_read = recvfrom(sock, ack_data, packSize, MSG_DONTWAIT, (struct sockaddr *)&objSocket, &addr_len);
+            bytes_read = recvfrom(sock, ack_data, packSize, MSG_DONTWAIT, (struct sockaddr *)&objSocket, &addrLen);
 
             if (bytes_read == -1){ // NO ACK 
                 flag = 0;
@@ -116,7 +156,7 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, string msg){
 
         // Try recive ACK 2
         do { // Descartar mesajes q no sean ACKS
-            bytes_read = recvfrom(sock, ack_data, packSize, MSG_DONTWAIT, (struct sockaddr *)&objSocket, &addr_len);
+            bytes_read = recvfrom(sock, ack_data, packSize, MSG_DONTWAIT, (struct sockaddr *)&objSocket, &addrLen);
 
             if (bytes_read == -1){ // NO ACK 
                 flag = 0;
@@ -150,7 +190,7 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, string msg){
 }
 
 // Calcula numero de paquetes y divide mensaje en varios
-bool sendMsg(struct sockaddr_in &objSocket, string msg){
+bool sendMsg(struct sockaddr_in &objSocket, socklen_t &addrLen, string msg, int sock){
 
    // El msg se dividira en paquetes. Cada paquete desperdiciara:
    
@@ -180,7 +220,7 @@ bool sendMsg(struct sockaddr_in &objSocket, string msg){
 
       pack = protocol + to_string_parse(numPacks-i, 3) + msg.substr(0, realSize);
 
-      send = sendPackageRDT3(objSocket, pack);
+      send = sendPackageRDT3(objSocket, addrLen, pack, sock);
       if (!send) break;
       
     //   this_thread::sleep_for(chrono::seconds(timeout)); // ESPERA A QUE PROCESEN COSAS :c
@@ -194,10 +234,12 @@ bool sendMsg(struct sockaddr_in &objSocket, string msg){
 }
 
 
+
+
 // Recive -------------------------------------------------------------------------------------------
 
 // Recibe paquetes individuales
-string recivePackageRDT3(struct sockaddr_in &objSocket){
+string recivePackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, int sock){
 
     cout << "\nEsperando recibir paquete... " << endl;
 
@@ -206,7 +248,7 @@ string recivePackageRDT3(struct sockaddr_in &objSocket){
     char buffData[packSize];   
 
     while (1){
-        bytes_read = recvfrom(sock, buffData, packSize, 0, (struct sockaddr *)&objSocket, &addr_len);
+        bytes_read = recvfrom(sock, buffData, packSize, 0, (struct sockaddr *)&objSocket, &addrLen);
         pack.assign(buffData, bytes_read);
         seqNum = pack.substr(pack.size()-20, 10);
 
@@ -230,14 +272,14 @@ string recivePackageRDT3(struct sockaddr_in &objSocket){
 }
 
 // Covierte un numero de paquetes en un mensaje
-string reciveMsg(struct sockaddr_in &objSocket){
+string reciveMsg(struct sockaddr_in &objSocket, socklen_t &addrLen, int sock){
 
    int packNum;
    string pack;
    string totalMsg = "";
 
    // Recibimos el primer paquete
-   pack = recivePackageRDT3(objSocket);
+   pack = recivePackageRDT3(objSocket, addrLen, sock);
 
    // Le quitamos el numero de paquetes, el seqNumber y el checkSum
    totalMsg += pack[0] + pack.substr(4, pack.size()-24);
@@ -245,7 +287,7 @@ string reciveMsg(struct sockaddr_in &objSocket){
    packNum = stoi(pack.substr(1, 3));
 
    while (--packNum){
-      pack = recivePackageRDT3(objSocket);
+      pack = recivePackageRDT3(objSocket, addrLen, sock);
       totalMsg += pack.substr(4, pack.size()-24);
    }
    

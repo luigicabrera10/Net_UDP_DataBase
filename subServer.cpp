@@ -1,6 +1,14 @@
 #include "comunication.h"
 
+int serverSock, serverPort;
+int keepAliveSock, keepAlivePort;
+
+socklen_t addr_lenServer;
+socklen_t addr_lenkeepAlive;
+
 struct sockaddr_in server_addr;
+struct sockaddr_in keepAlive_addr;
+
 map< string, vector< pair<string, string> > > Data;
 
 void insert(string name1, string name2, string relation){
@@ -74,9 +82,6 @@ void Update(string name1, string name2, string relation, string newName1, string
 }
 
 
-
-
-
 void parsing(string msg){
 
     if(msg[0] == 'C'){
@@ -93,7 +98,7 @@ void parsing(string msg){
         string ans = read(name1);
 
         // Send answer to main server
-        sendMsg(server_addr, ans);
+        sendMsg(server_addr, addr_lenServer, ans, serverSock);
 
     } else if (msg[0] == 'U'){
         int size1 = stoi(msg.substr(1, 2));
@@ -131,28 +136,26 @@ void parsing(string msg){
 
 void initSubServer(){
 
-    struct hostent *host = (struct hostent *) gethostbyname((char *)"127.0.0.1");
+    serverPort = basePort + 1;
+    connectToSocket(serverSock, server_addr, serverPort);
 
-    if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1){
-        perror("socket");
-        exit(1);
-    }
-
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(5000);
-    server_addr.sin_addr = *((struct in_addr *)host->h_addr);
-    bzero(&(server_addr.sin_zero),8);
+    keepAlivePort = basePort + 2;
+    connectToSocket(keepAliveSock, keepAlive_addr, keepAlivePort);
 
 }
 
-void sayHi(){
+void sayHi(){ 
     
     char send_data[packSize];
     bzero(send_data, packSize);
     
     for (int i = 0; i < keepAliveStrAnsw.size(); ++i) send_data[i] = keepAliveStrAnsw[i];
 
-    sendto(sock, send_data, strlen(send_data), 0, (struct sockaddr *)&server_addr, sizeof(struct sockaddr));
+    cout << "SubServer Sending OkiDoki" << endl;
+    sendto(serverSock, send_data, strlen(send_data), 0, (struct sockaddr *)&server_addr, sizeof(struct sockaddr));
+
+    cout << "KeepAlive Sending OkiDoki" << endl;
+    sendto(keepAliveSock, send_data, strlen(send_data), 0, (struct sockaddr *)&keepAlive_addr, sizeof(struct sockaddr));
 }
 
 void listenQuerys(){
@@ -163,7 +166,7 @@ void listenQuerys(){
     
     while(1){
 
-        recived_data = reciveMsg(server_addr);
+        recived_data = reciveMsg(server_addr, addr_lenServer, serverSock);
 
         // Parsing
         parsing(recived_data); 
@@ -179,7 +182,7 @@ int main(){
     initSubServer();
 
     // Say hi to main server
-    sayHi(); // may be deleted and will use keep alive
+    sayHi();
 
     // Solve querys
     listenQuerys();

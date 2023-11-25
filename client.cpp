@@ -2,6 +2,8 @@
 
 
 // Variables Globales
+int serverSock;
+socklen_t addr_len;
 struct sockaddr_in server_addr;
 
 // Funcion que parsea el mensaje
@@ -159,23 +161,9 @@ void parsing( char *data){
    
 }
 
-void initServerConection(){
-   struct hostent *host = (struct hostent *) gethostbyname((char *)"127.0.0.1");
-
-   if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1){
-      perror("socket");
-      exit(1);
-   }
-
-   server_addr.sin_family = AF_INET;
-   server_addr.sin_port = htons(5000);
-   server_addr.sin_addr = *((struct in_addr *)host->h_addr);
-   bzero(&(server_addr.sin_zero),8);
-}
-
 int main(){
 
-   initServerConection();
+   connectToSocket(serverSock, server_addr, basePort);
 
    string msg;
    char send_data[packSize];
@@ -191,11 +179,14 @@ int main(){
 
       if ((strcmp(send_data , "q") == 0) || strcmp(send_data , "Q") == 0) break;
 
-      sendMsg(server_addr, send_data);
+      if (!sendMsg(server_addr, addr_len, send_data, serverSock)){
+         cout << "No se pudo enviar los datos" << endl;
+         continue;
+      }
 
       if (send_data[0] == 'R'){ // Lectura espera por respuesta
          cout << "ESPERANDO DATA: " << endl;
-         msg = reciveMsg(server_addr);
+         msg = reciveMsg(server_addr, addr_len, serverSock);
          cout << msg.substr(5, msg.size() - 5) << endl;
       }
 

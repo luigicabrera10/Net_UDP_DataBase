@@ -1,0 +1,7 @@
+C julio profe es
+C julio master es
+C julio teacher es
+C mark alumno es
+C mark malo is
+C mark bueno 33
+C luigi inteligente 100

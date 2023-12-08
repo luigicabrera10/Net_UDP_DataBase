@@ -170,23 +170,26 @@ int main(){
 
    while (1) {
 
+      // Leer entrada usuario
       printf("\n$:");
       cin.getline(send_data, packSize);
+
+      // Parsear Data y convertirlo a msg (Enviar a Main Server)
       parsing(send_data);
 
       // cout << "Send data: " << send_data << endl;
 
       if ((strcmp(send_data , "q") == 0) || strcmp(send_data , "Q") == 0) break;
 
-      // if (!sendMsg(server_addr, addr_len, send_data, serverSock)){
+      // Enviar a MainServer
       if (!client.clientSend(send_data)){
          cout << "No se pudo enviar los datos" << endl;
          continue;
       }
 
+      // Si se envio una solicitud de lectura, esperar respuesta
       if (send_data[0] == 'R'){ // Lectura espera por respuesta
          cout << "ESPERANDO DATA: " << endl;
-         // msg = reciveMsg(server_addr, addr_len, serverSock);
          msg = client.clientRecive();
          cout << msg.substr(5, msg.size() - 5) << endl;
       }

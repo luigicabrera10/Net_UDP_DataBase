@@ -46,8 +46,8 @@ bool deleteAll(string name1){
 
 }
 
-// Funcion que retorna un vector de las relaciones de un nombre por ejemplo:
-// read("Juan") -> {"Juan padre es", "Juan hijo es", "Juan hermano es"}
+// Funcion que retorna una string de las relaciones de un nombre por ejemplo:
+// read("Pepe") -> "Pepe padre es;Pepe hijo es;Pepe hermano es"
 string read(string name1){
     string ans = "";
 

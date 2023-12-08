@@ -22,7 +22,7 @@ void keepAliveThread(){
 
     while(1){
         
-        keepAliveVectMtx.lock();
+        keepAliveVectMtx.lock(); 
         for (int i = 0; i < serversNum; ++i){
             onlineServers[i] = mainServer_KeepAlive.serverSend(keepAlive[i], keepAliveData);
         }
@@ -33,6 +33,7 @@ void keepAliveThread(){
     }
 }
 
+// Enviar solo un msg a cualquier subserver a la vez (evitar que ACK's se mezclen)
 bool sendMsgToSubServer(int index, string msg){
 
     bool answ;
@@ -51,6 +52,7 @@ void simpleRedirect(string msg){
     sendMsgToSubServer((mod+1) % serversNum, msg);
 }
 
+// Funcion para querys recursivas
 string recursiveRead(string base, string query, int maxRecursive, int deep = 0){
 
     // Max recursion
@@ -134,7 +136,7 @@ string recursiveRead(string base, string query, int maxRecursive, int deep = 0){
 
 }
 
-// Funcion que lee el mensaje del cliente
+// Funcion que ejecuta la query de lectura (R)
 string readRedirect(string msg){ 
 
     string answ;
@@ -156,13 +158,12 @@ string readRedirect(string msg){
 }
 
 
-
+// Funcion que recive a los subservers (Como si fueran clientes)
 void waitSubServers(){
 
     string answ;
     cout << "\n\nWaiting for subservers: " << endl;
 
-    
     for (int i = 0; i < serversNum; ++i){
 
         // Get SubServers 
@@ -178,7 +179,7 @@ void waitSubServers(){
     }
 }
 
-// Funcion que escucha al cliente
+// Funcion que escucha a los cliente
 void listenClients(){
     string recived_data;
     string query_answ;

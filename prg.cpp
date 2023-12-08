@@ -34,7 +34,7 @@ void parsing( string& data){
         cout << "Relation: " << relation << endl;
         // Guardamos en el char "C" + tamaño1 + nombre1 + tamaño2 + nombre2 + tamaño3 + relacion
         string new_char = "C" + size1_str + name1 + size2_str + name2 + size3_str + relation;
-        // strcpy(data, new_char.c_str());      
+
         data = new_char;
 
     } else if (msg[0] == 'R'){
@@ -55,7 +55,7 @@ void parsing( string& data){
         cout << "Recurrence: " << recurrence << endl;
         // Guardamos en el char "R" + tamaño1 + nombre1 + tamaño2 + recurrencia
         string new_char = "R" + size1_str + name1 + size2_str + recurrence;
-        // strcpy(data, new_char.c_str());
+
         data = new_char;
 
     } else if (msg[0] == 'U'){
@@ -105,7 +105,7 @@ void parsing( string& data){
         // Guardamos en el char "U" + tamaño1 + nombre1 + tamaño2 + nombre2 + tamaño3 + relacion + tamaño4 + newName1 + tamaño5 + newName2 + tamaño6 + newRelation
         string new_char = "U" + size1_str + name1 + size2_str + name2 + size3_str + relation + size4_str + newName1 + size5_str + newName2 + size6_str + newRelation;
         new_char = new_char + to_string_parse(checksum(new_char), 10) + '\0';
-        // strcpy(data, new_char.c_str());
+
         data = new_char;
 
     } else if (msg[0] == 'D'){
@@ -137,7 +137,6 @@ void parsing( string& data){
             string new_char = "D" + size1_str + name1 + size2_str + name2 + size3_str + relation;
             new_char = new_char + to_string_parse(checksum(new_char), 10) + '\0';
 
-            // strcpy(data, new_char.c_str());
             data = new_char;
 
         } else {
@@ -158,7 +157,6 @@ void parsing( string& data){
             string new_char = "D" + size1_str + name1 + size2_str + option;
             new_char = new_char + to_string_parse(checksum(new_char), 10) + '\0';
 
-            // strcpy(data, new_char.c_str());
             data = new_char;
 
         }

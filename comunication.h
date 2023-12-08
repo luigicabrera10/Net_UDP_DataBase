@@ -34,13 +34,14 @@ string subServerWave = "WI'm a SubServer";
 
 // AUX Functions ------------------------------------------------------------------------------------
 
-// Funcion que convierte una string con un numero
+// Funcion que convierte una string a un numero
 int checksum(const string input) {
    int checksum = 0;
    for (int i = 0; i < input.size(); ++i) checksum += (int) input[i];
    return checksum;
 }
 
+// Funcion que convierte un numero a una string completando 0's
 string to_string_parse(int num, int size = 2){
 	string s = to_string(num);
 	while(s.size() < size) s = "0" + s;
@@ -66,7 +67,7 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, string m
 
     int bytes_read;
     int trys = 2;
-    bool messageSent = 0;
+    bool messageSent = 0; // Resultado de la funcion
     bool flag; // Indica si llego ACK o no
 
     // Add SeqNumber y CheckSum
@@ -76,6 +77,7 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, string m
     cout << "\nEnviando paquete: " << msg<< endl;
     cout << "Hacia: " <<  inet_ntoa(objSocket.sin_addr) << " - " << ntohs(objSocket.sin_port) << endl;
 
+    // Se limpia el buffer y se convierte string a char[]
     bzero(send_data, packSize);
     strncpy(send_data, msg.c_str(), min(packSize, (int) msg.size()));
 
@@ -89,8 +91,8 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, string m
         // Wait
         this_thread::sleep_for(std::chrono::milliseconds(timeout));
 
-        // Try recive ACK 1
-        while (1) { // Descartar mesajes q no sean ACKS
+        // Check if ACK1 arrived 
+        while (1) { 
 
             bytes_read = recvfrom(sock, ack_data, packSize, MSG_DONTWAIT, (struct sockaddr *)&objSocket, &addrLen);
 
@@ -100,8 +102,7 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, string m
             }
 
             data_str.assign(ack_data, bytes_read);
-            // cout << "Read ACK str (" << data_str.size() << "): " << data_str << endl;
-            if (data_str == to_string_parse(seqNumb -1, 10)){
+            if (data_str == to_string_parse(seqNumb -1, 10)){ // Verificar que sea nuestro ACK, sino descartar
                 flag = 1;
                 cout << "Validate ACK SeqNum: " << flag << endl;
                 break;
@@ -116,8 +117,8 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, string m
         }
 
 
-        // Try recive ACK 2
-        while (1) { // Descartar mesajes q no sean ACKS
+        // Check if ACK2 arrived 
+        while (1) {
         
             bytes_read = recvfrom(sock, ack_data, packSize, MSG_DONTWAIT, (struct sockaddr *)&objSocket, &addrLen);
 
@@ -127,8 +128,7 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, string m
             }
 
             data_str.assign(ack_data, bytes_read);
-            // cout << "Read ACK str (" << data_str.size() << "): " << data_str << endl;
-            if (data_str == to_string_parse(seqNumb -1, 10)){
+            if (data_str == to_string_parse(seqNumb -1, 10)){ // Verificar que sea nuestro ACK, sino descartar
                 flag = 1;
                 cout << "Validate ACK SeqNum: " << flag << endl;
                 break;
@@ -154,41 +154,43 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, string m
 // Calcula numero de paquetes y divide mensaje en varios
 bool sendMsg(struct sockaddr_in &objSocket, socklen_t &addrLen, string msg, int sock, int &seqNumb){
 
-   // El msg se dividira en paquetes. Cada paquete desperdiciara:
-   
-   // 1 byte en indicar protocolo
-   // 3  bytes en indicar numero de paquetes restantes
-   // 10 bytes en seqNumber
-   // 10 bytes en checksum
+    // El msg se dividira en paquetes. Cada paquete desperdiciara:
+    
+    // 1 byte en indicar protocolo
+    // 3  bytes en indicar numero de paquetes restantes
+    // 10 bytes en seqNumber
+    // 10 bytes en checksum
 
-   // Se le resta 24 al packsize pq cada uno gastara 10 + 10 + 3 + 1 bytes en informacion de paquetes
-   int realSize = packSize - 24;
+    // Se le resta 24 al packsize pq cada uno gastara 10 + 10 + 3 + 1 bytes en informacion de paquetes
+    int realSize = packSize - 24;
 
-   // Se guarda el protocolo
-   char protocol = msg[0];
+    // Se guarda el protocolo
+    char protocol = msg[0];
 
-   // Se le resta el primer caracter a msg, pq protocolo (CRUDA) va a ser incluido repetitivamente en cada paquete
-   // Ademas esto nos ayuda a calcular el numero de paquetes requeridos
-   msg = msg.substr(1, msg.size() - 1);
+    // Se le resta el primer caracter a msg, pq protocolo (CRUDA) va a ser incluido repetitivamente en cada paquete
+    // Ademas esto nos ayuda a calcular el numero de paquetes requeridos
+    msg = msg.substr(1, msg.size() - 1);
 
-   // calculamos el numero de paquetes requeridos
-   int numPacks = ceil( (float) msg.size() / realSize );
+    // calculamos el numero de paquetes requeridos
+    int numPacks = ceil( (float) msg.size() / realSize );
 
-   bool send;
-   string pack;
+    bool send;
+    string pack;
 
-   for (int i = 0; i < numPacks; ++i){
+    for (int i = 0; i < numPacks; ++i){
+        
+        // Se crea un paquete: A 003 msg
+        pack = protocol + to_string_parse(numPacks-i, 3) + msg.substr(i*realSize, realSize);
 
-      pack = protocol + to_string_parse(numPacks-i, 3) + msg.substr(i*realSize, realSize);
+        // Cada paquete se envia por RDT3
+        send = sendPackageRDT3(objSocket, addrLen, pack, sock, seqNumb);
+        if (!send) break;
 
-      send = sendPackageRDT3(objSocket, addrLen, pack, sock, seqNumb);
-      if (!send) break;
+        // if (msg.size() > realSize) msg.substr(realSize, msg.size() - realSize); 
 
-      if (msg.size() > realSize) msg.substr(realSize, msg.size() - realSize); 
+    }
 
-   }
-
-   return send;
+    return send;
 
 }
 
@@ -206,6 +208,8 @@ string recivePackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, int 
     char buffData[packSize];   
 
     while (1){
+
+        // Leer hasta que se reciva un paquete
         bytes_read = recvfrom(sock, buffData, packSize, 0, (struct sockaddr *)&objSocket, &addrLen);
         pack.assign(buffData, bytes_read);
         seqNum = pack.substr(pack.size()-20, 10);
@@ -229,25 +233,26 @@ string recivePackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, int 
 
 }
 
-// Covierte un numero de paquetes en un mensaje
+// Covierte varios paquetes a un solo mensaje
 string reciveMsg(struct sockaddr_in &objSocket, socklen_t &addrLen, int sock){
 
-   int packNum;
-   string pack;
-   string totalMsg = "";
+    int packNum;
+    string pack;
+    string totalMsg = "";
 
-   // Recibimos el primer paquete
-   pack = recivePackageRDT3(objSocket, addrLen, sock);
+    // Recibimos el primer paquete
+    pack = recivePackageRDT3(objSocket, addrLen, sock);
 
-   // Le quitamos el numero de paquetes, el seqNumber y el checkSum
-   totalMsg += pack[0] + pack.substr(4, pack.size()-24);
+    // Le quitamos el numero de paquetes, el seqNumber y el checkSum
+    totalMsg += pack[0] + pack.substr(4, pack.size()-24);
 
-   packNum = stoi(pack.substr(1, 3));
+    packNum = stoi(pack.substr(1, 3));
 
-   while (--packNum){
-      pack = recivePackageRDT3(objSocket, addrLen, sock);
-      totalMsg += pack.substr(4, pack.size()-24);
-   }
+    // Recivimos tantos paquetes como falten
+    while (--packNum){
+        pack = recivePackageRDT3(objSocket, addrLen, sock);
+        totalMsg += pack.substr(4, pack.size()-24);
+    }
    
    return totalMsg;
 

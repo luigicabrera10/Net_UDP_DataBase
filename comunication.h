@@ -28,8 +28,8 @@ const int timeout = 50;
 
 // Keep Alive data
 const int keepAliveSecs = 2;
-string keepAliveData = "Are You Alive?";
-string subServerWave = "I'm a SubServer";
+string keepAliveData = "KAre You Alive?";
+string subServerWave = "WI'm a SubServer";
 
 
 // AUX Functions ------------------------------------------------------------------------------------
@@ -179,7 +179,7 @@ bool sendMsg(struct sockaddr_in &objSocket, socklen_t &addrLen, string msg, int 
 
    for (int i = 0; i < numPacks; ++i){
 
-      pack = protocol + to_string_parse(numPacks-i, 3) + msg.substr(0, realSize);
+      pack = protocol + to_string_parse(numPacks-i, 3) + msg.substr(i*realSize, realSize);
 
       send = sendPackageRDT3(objSocket, addrLen, pack, sock, seqNumb);
       if (!send) break;

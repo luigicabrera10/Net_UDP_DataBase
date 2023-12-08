@@ -31,43 +31,6 @@ const int keepAliveSecs = 2;
 string keepAliveData = "Are You Alive?";
 string subServerWave = "I'm a SubServer";
 
-// SOCKETS Functions --------------------------------------------------------------------------------
-
-// init Socket Function
-// void initSocket(int &sockRef, struct sockaddr_in &objSocket, socklen_t &addr_len, int port){
-//     if ((sockRef = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
-//         perror("Socket err");
-//         exit(1);
-//     }
-
-//     objSocket.sin_family = AF_INET;
-//     objSocket.sin_port = htons(port);
-//     objSocket.sin_addr.s_addr = INADDR_ANY;
-//     bzero(&(objSocket.sin_zero),8);
-
-//     if (bind(sockRef,(struct sockaddr *)&objSocket, sizeof(struct sockaddr)) == -1)  {
-//         perror("Bind");
-//         exit(1);
-//     }
-
-//     addr_len = sizeof(struct sockaddr);
-// }
-
-// void connectToSocket(int &sock, struct sockaddr_in &objSocket, int port){
-//     struct hostent *host = (struct hostent *) gethostbyname((char *)"127.0.0.1");
-
-//     if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1){
-//         perror("socket");
-//         exit(1);
-//     }
-
-//     objSocket.sin_family = AF_INET;
-//     objSocket.sin_port = htons(port);
-//     objSocket.sin_addr = *((struct in_addr *)host->h_addr);
-//     bzero(&(objSocket.sin_zero),8);
-// }
-
-
 
 // AUX Functions ------------------------------------------------------------------------------------
 
@@ -116,9 +79,9 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, string m
     bzero(send_data, packSize);
     strncpy(send_data, msg.c_str(), min(packSize, (int) msg.size()));
 
-    while (trys--){
+    for (int i = 0; i < trys; ++i){
 
-        cout << "\nIntentos Restantes: " << trys +1 << endl;
+        cout << "\nIntentos Restantes: " << trys - i << endl;
 
         // SEND MSG
         sendto(sock, send_data, strlen(send_data), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr));
@@ -127,7 +90,8 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, string m
         this_thread::sleep_for(std::chrono::milliseconds(timeout));
 
         // Try recive ACK 1
-        do { // Descartar mesajes q no sean ACKS
+        while (1) { // Descartar mesajes q no sean ACKS
+
             bytes_read = recvfrom(sock, ack_data, packSize, MSG_DONTWAIT, (struct sockaddr *)&objSocket, &addrLen);
 
             if (bytes_read == -1){ // NO ACK 
@@ -136,21 +100,25 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, string m
             }
 
             data_str.assign(ack_data, bytes_read);
-            cout << "Read ACK str (" << data_str.size() << "): " << data_str << endl;
-            flag = data_str == to_string_parse(seqNumb -1, 10);
-            cout << "Validate SeqNum: " << flag << endl;
+            // cout << "Read ACK str (" << data_str.size() << "): " << data_str << endl;
+            if (data_str == to_string_parse(seqNumb -1, 10)){
+                flag = 1;
+                cout << "Validate ACK SeqNum: " << flag << endl;
+                break;
+            }
             
-        } while (!flag);
+        }
 
 
         if (!flag){ // NO ACK (bytes_read == -1)
-            cout << "Ningun ACK llego... Reenviando" << endl;
+            cout << "Ningun ACK llego -> Reenviando" << endl;
             continue;
         }
 
 
         // Try recive ACK 2
-        do { // Descartar mesajes q no sean ACKS
+        while (1) { // Descartar mesajes q no sean ACKS
+        
             bytes_read = recvfrom(sock, ack_data, packSize, MSG_DONTWAIT, (struct sockaddr *)&objSocket, &addrLen);
 
             if (bytes_read == -1){ // NO ACK 
@@ -159,25 +127,24 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, string m
             }
 
             data_str.assign(ack_data, bytes_read);
-            cout << "Read ACK str (" << data_str.size() << "): " << data_str << endl;
-            flag = data_str == to_string_parse(seqNumb -1, 10);
-            cout << "Validate SeqNum: " << flag << endl;
+            // cout << "Read ACK str (" << data_str.size() << "): " << data_str << endl;
+            if (data_str == to_string_parse(seqNumb -1, 10)){
+                flag = 1;
+                cout << "Validate ACK SeqNum: " << flag << endl;
+                break;
+            }
             
-        } while (!flag);
+        }
 
 
         if (!flag){ // NO ACK 2 (bytes_read == -1)
-            cout << "Solo 1 ACK... Enviado con exito!" << endl;
+            cout << "Solo 1 ACK -> Enviado con exito!" << endl;
             messageSent = 1;
             break;
         }
 
         // Second ACK
-        cout << "Dos ACK's llegaron... Reenviando" << endl;
-        data_str.assign(ack_data, bytes_read);
-        cout << "Read str (" << data_str.size() << "): " << data_str << endl;
-        cout << "Validation: " << (bool) (data_str == to_string_parse(seqNumb -1, 10)) << endl;
-
+        cout << "Dos ACK's llegaron -> Error de envio" << endl;
     }
     
     return messageSent;
@@ -193,7 +160,6 @@ bool sendMsg(struct sockaddr_in &objSocket, socklen_t &addrLen, string msg, int 
    // 3  bytes en indicar numero de paquetes restantes
    // 10 bytes en seqNumber
    // 10 bytes en checksum
-
 
    // Se le resta 24 al packsize pq cada uno gastara 10 + 10 + 3 + 1 bytes en informacion de paquetes
    int realSize = packSize - 24;
@@ -217,8 +183,6 @@ bool sendMsg(struct sockaddr_in &objSocket, socklen_t &addrLen, string msg, int 
 
       send = sendPackageRDT3(objSocket, addrLen, pack, sock, seqNumb);
       if (!send) break;
-      
-    //   this_thread::sleep_for(chrono::seconds(timeout)); // ESPERA A QUE PROCESEN COSAS :c
 
       if (msg.size() > realSize) msg.substr(realSize, msg.size() - realSize); 
 

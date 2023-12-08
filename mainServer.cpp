@@ -84,7 +84,6 @@ string recursiveRead(string base, string query, int maxRecursive, int deep = 0){
     // Send Query
     string querySubServer = "R" + to_string_parse(query.size(), 2) + query;
     cout << "Sending SubServerQuery: " << querySubServer << endl;
-    
     sendMsgToSubServer(mod, querySubServer);
 
     // Recive the answer (all relations of query)

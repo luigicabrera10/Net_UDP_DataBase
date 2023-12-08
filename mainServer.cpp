@@ -1,34 +1,45 @@
 #include "comunication.h"
 
+
+// Asegurar Sincronizacion
+mutex querySubServer;
+mutex keepAliveVectMtx;
+
+// KeepAliveVector
 bool onlineServers[serversNum];
-mutex querySubServers[serversNum];
 
-// To init Sockets
-struct sockaddr_in initSockClient;
-struct sockaddr_in initSockSubServer;
-struct sockaddr_in initSockKeepAlive;
+// Sockets
+Server mainServer_Sub;
+Server mainServer_Client;
+Server mainServer_KeepAlive;
 
-socklen_t addr_lenClient;
-struct sockaddr_in client_addr;
-
-socklen_t addr_lenSubServer;
-struct sockaddr_in servers[serversNum];
-
-socklen_t addr_lenKeepAlive;
+// Guardar las direcciones y puertos de los subServers y KeepAlive's
+struct sockaddr_in subServers[serversNum];
 struct sockaddr_in keepAlive[serversNum];
 
-// Sockets for each task
-int sockClient;
-int sockKeepAlive;
-int sockSubServers;
 
-bool sendMsgToSubServer(int index, string msg){ // ESTO PUEDES CAMBIARLO
+void keepAliveThread(){
+
+    while(1){
+        
+        keepAliveVectMtx.lock();
+        for (int i = 0; i < serversNum; ++i){
+            onlineServers[i] = mainServer_KeepAlive.serverSend(keepAlive[i], keepAliveData);
+        }
+        keepAliveVectMtx.unlock();
+
+        this_thread::sleep_for(chrono::seconds(keepAliveSecs));
+
+    }
+}
+
+bool sendMsgToSubServer(int index, string msg){
 
     bool answ;
 
-    querySubServers[index].lock();
-    answ = sendMsg(servers[index], addr_lenSubServer, msg, sockSubServers);
-    querySubServers[index].unlock();
+    querySubServer.lock();
+    answ = mainServer_Sub.serverSend(subServers[index], msg);
+    querySubServer.unlock();
 
     return answ;
 }
@@ -46,10 +57,24 @@ string recursiveRead(string base, string query, int maxRecursive, int deep = 0){
     if (deep > maxRecursive) return base;
 
     // Check for online servers
+    bool alive;
     int mod = query[0] % serversNum;
-    if (!onlineServers[mod]) {
+
+    keepAliveVectMtx.lock();
+    alive = onlineServers[mod];
+    keepAliveVectMtx.unlock();
+
+    if (!alive) {
         mod = (mod+1)%serversNum;
-        if (!onlineServers[mod]) return base; // No server online for that query
+
+        keepAliveVectMtx.lock();
+        alive = onlineServers[mod];
+        keepAliveVectMtx.unlock();
+
+        if (!alive){
+            cout << "Server " << mod << " Its not online for query " << query << "!" << endl;
+            return base; // No server online for that query
+        }
     }
 
     // Set tabs
@@ -60,12 +85,11 @@ string recursiveRead(string base, string query, int maxRecursive, int deep = 0){
     string querySubServer = "R" + to_string_parse(query.size(), 2) + query;
     cout << "Sending SubServerQuery: " << querySubServer << endl;
     
-    // sendMsg(servers[mod], querySubServer);
     sendMsgToSubServer(mod, querySubServer);
 
     // Recive the answer (all relations of query)
     // all results separated by ";"
-    string rawAnsw = reciveMsg(servers[mod], addr_lenSubServer, sockSubServers); 
+    string rawAnsw = mainServer_Sub.serverRecive(); 
     // cout << "RAW ANSW: " << rawAnsw << endl;
 
     // Parse protocols
@@ -115,7 +139,6 @@ string recursiveRead(string base, string query, int maxRecursive, int deep = 0){
 string readRedirect(string msg){ 
 
     string answ;
-    int mod = msg[3] % serversNum;
 
     // Parsear la query
     int size1 = stoi(msg.substr(1, 2));
@@ -133,61 +156,25 @@ string readRedirect(string msg){
 
 }
 
-void initServer(){
 
-    // Main Server Socket (for client) -----------------------------------------------------------------------
-    initSocket(sockClient, initSockClient, addr_lenClient, basePort);
-	cout << "\nUDPServer Waiting for CLIENT on port " << basePort << endl;
-
-    // Main Server Sockets (for SubServers) ------------------------------------------------------------------
-    initSocket(sockSubServers, initSockSubServer, addr_lenSubServer, basePort + 1);
-    cout << "UDPServer Waiting for subServers  on port " << basePort + 1 << endl;
-
-
-    // Main Server Sockets (for KeepAlive's) -------------------------------------------------------------------
-    initSocket(sockKeepAlive, initSockKeepAlive, addr_lenKeepAlive, basePort + 2);
-    cout << "UDPServer Waiting for keepAlive  on port " << basePort + 2 << endl;
-
-}
 
 void waitSubServers(){
 
-    int bytes_read;
-    string recived_data;
-    char recv_data[packSize];
-
-    struct sockaddr_in client_addr;
-
+    string answ;
     cout << "\n\nWaiting for subservers: " << endl;
 
+    
     for (int i = 0; i < serversNum; ++i){
 
-        // SubServer Arrive 
-        bytes_read = recvfrom(sockSubServers,recv_data,1024,MSG_WAITALL, (struct sockaddr *)&(servers[i]), &addr_lenSubServer);
-	    recived_data.assign(recv_data, bytes_read);
-        recived_data += '\0';
+        // Get SubServers 
+        answ = mainServer_Sub.serverRecive();
+        if (answ == subServerWave) subServers[i] = mainServer_Sub.getLastReadClient();
+        else --i;
 
-        if (recived_data.substr(0, 7) != "OkiDoki") {
-            --i;
-            cout << "No es SubServidor (Mal Protocolo)" << endl;
-        }
-        else{
-            cout << "\nSubServer " << i <<  ": " << recived_data << " " << inet_ntoa(servers[i].sin_addr) << " " << ntohs(servers[i].sin_port) << endl;
-            onlineServers[i] = 1;
-        }
-
-        // SubServer keepAlive
-        bytes_read = recvfrom(sockKeepAlive,recv_data,1024,MSG_WAITALL, (struct sockaddr *)&(keepAlive[i]), &addr_lenKeepAlive);
-	    recived_data.assign(recv_data, bytes_read);
-        recived_data += '\0';
-
-        if (recived_data.substr(0, 7) != "OkiDoki") {
-            --i;
-            cout << "No es SubServidor (Mal Protocolo)" << endl;
-        }
-        else{
-            cout << "SubServer (KeepAlive) " << i <<  ": " << recived_data << " " << inet_ntoa(keepAlive[i].sin_addr) << " " << ntohs(keepAlive[i].sin_port) << endl;
-        }
+        // Get KeepAlive's
+        answ = mainServer_KeepAlive.serverRecive();
+        if (answ == keepAliveData) keepAlive[i] = mainServer_KeepAlive.getLastReadClient();
+        else  --i;
 
     }
 }
@@ -198,26 +185,36 @@ void listenClients(){
     string query_answ;
 
     while(1){
-        recived_data = reciveMsg(client_addr, addr_lenClient, sockClient);
+        // recived_data = reciveMsg(client_addr, addr_lenClient, sockClient);
+        recived_data = mainServer_Client.serverRecive();
+
+
         if (recived_data[0] != 'R') thread(simpleRedirect, recived_data).detach();
         else {
+
             query_answ = readRedirect(recived_data); // Si es read se usa readRedirect
+
             cout << "Query answ:\n" << query_answ << endl;
-            sendMsg(client_addr, addr_lenClient, "A" + to_string_parse(query_answ.size(), 4) + query_answ, sockClient);
+            mainServer_Client.serverSendLast("A" + to_string_parse(query_answ.size(), 4) + query_answ);
+
         }
     }
 }
 
 int main(){
 
-    // Inicializar el servidor
-    initServer();
+    // Inicializar Sockets
+    mainServer_Client = Server(basePort);
+    mainServer_Sub = Server(basePort+1);
+    mainServer_KeepAlive = Server(basePort+2);
 
     // Need to know all subservers ports before keep alive and query's
     waitSubServers();
     cout << "\nALL SUBSERVERS READY" << endl;
 
+
     // Keep Alive Thread Execution
+    thread(keepAliveThread).detach();
 
     // listen client
     listenClients();

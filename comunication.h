@@ -25,52 +25,47 @@ int basePort = 5000;
 const int serversNum = 4;
 const int packSize = 1024;
 const int timeout = 50;
-int sequence_number = 0;
-
-// int sock; // No more need
-// struct sockaddr_in server_addr; // IDK IF THIS IS OKAY
 
 // Keep Alive data
 const int keepAliveSecs = 2;
-string keepAliveStr = "RUAlive?";
-string keepAliveStrAnsw = "OkiDoki";
-
+string keepAliveData = "Are You Alive?";
+string subServerWave = "I'm a SubServer";
 
 // SOCKETS Functions --------------------------------------------------------------------------------
 
 // init Socket Function
-void initSocket(int &sockRef, struct sockaddr_in &objSocket, socklen_t &addr_len, int port){
-    if ((sockRef = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
-        perror("Socket err");
-        exit(1);
-    }
+// void initSocket(int &sockRef, struct sockaddr_in &objSocket, socklen_t &addr_len, int port){
+//     if ((sockRef = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
+//         perror("Socket err");
+//         exit(1);
+//     }
 
-    objSocket.sin_family = AF_INET;
-    objSocket.sin_port = htons(port);
-    objSocket.sin_addr.s_addr = INADDR_ANY;
-    bzero(&(objSocket.sin_zero),8);
+//     objSocket.sin_family = AF_INET;
+//     objSocket.sin_port = htons(port);
+//     objSocket.sin_addr.s_addr = INADDR_ANY;
+//     bzero(&(objSocket.sin_zero),8);
 
-    if (bind(sockRef,(struct sockaddr *)&objSocket, sizeof(struct sockaddr)) == -1)  {
-        perror("Bind");
-        exit(1);
-    }
+//     if (bind(sockRef,(struct sockaddr *)&objSocket, sizeof(struct sockaddr)) == -1)  {
+//         perror("Bind");
+//         exit(1);
+//     }
 
-    addr_len = sizeof(struct sockaddr);
-}
+//     addr_len = sizeof(struct sockaddr);
+// }
 
-void connectToSocket(int &sock, struct sockaddr_in &objSocket, int port){
-    struct hostent *host = (struct hostent *) gethostbyname((char *)"127.0.0.1");
+// void connectToSocket(int &sock, struct sockaddr_in &objSocket, int port){
+//     struct hostent *host = (struct hostent *) gethostbyname((char *)"127.0.0.1");
 
-    if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1){
-        perror("socket");
-        exit(1);
-    }
+//     if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1){
+//         perror("socket");
+//         exit(1);
+//     }
 
-    objSocket.sin_family = AF_INET;
-    objSocket.sin_port = htons(port);
-    objSocket.sin_addr = *((struct in_addr *)host->h_addr);
-    bzero(&(objSocket.sin_zero),8);
-}
+//     objSocket.sin_family = AF_INET;
+//     objSocket.sin_port = htons(port);
+//     objSocket.sin_addr = *((struct in_addr *)host->h_addr);
+//     bzero(&(objSocket.sin_zero),8);
+// }
 
 
 
@@ -92,7 +87,7 @@ string to_string_parse(int num, int size = 2){
 // Funcion que valida el checksum de un mensaje (Confirma si esta correcto)
 bool validateChecksum(string msg){        
     int check = stoi(msg.substr(msg.size() - 10, 10)); // 10 ultimos caracteres son checksum
-    return check ==  checksum(msg.substr(0, msg.size()-10));
+    return check == checksum(msg.substr(0, msg.size()-10));
 }
 
 
@@ -100,7 +95,7 @@ bool validateChecksum(string msg){
 // SEND ---------------------------------------------------------------------------------------------
 
 // Envia paquetes individuales
-bool sendPackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, string msg, int sock){
+bool sendPackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, string msg, int sock, int &seqNumb){
 
     char send_data[packSize];
     char ack_data[packSize];
@@ -112,7 +107,7 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, string m
     bool flag; // Indica si llego ACK o no
 
     // Add SeqNumber y CheckSum
-    msg = msg + to_string_parse(sequence_number++, 10);
+    msg = msg + to_string_parse(seqNumb++, 10);
     msg = msg + to_string_parse(checksum(msg), 10);
 
     cout << "\nEnviando paquete: " << msg<< endl;
@@ -142,7 +137,7 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, string m
 
             data_str.assign(ack_data, bytes_read);
             cout << "Read ACK str (" << data_str.size() << "): " << data_str << endl;
-            flag = data_str == to_string_parse(sequence_number -1, 10);
+            flag = data_str == to_string_parse(seqNumb -1, 10);
             cout << "Validate SeqNum: " << flag << endl;
             
         } while (!flag);
@@ -165,7 +160,7 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, string m
 
             data_str.assign(ack_data, bytes_read);
             cout << "Read ACK str (" << data_str.size() << "): " << data_str << endl;
-            flag = data_str == to_string_parse(sequence_number -1, 10);
+            flag = data_str == to_string_parse(seqNumb -1, 10);
             cout << "Validate SeqNum: " << flag << endl;
             
         } while (!flag);
@@ -181,7 +176,7 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, string m
         cout << "Dos ACK's llegaron... Reenviando" << endl;
         data_str.assign(ack_data, bytes_read);
         cout << "Read str (" << data_str.size() << "): " << data_str << endl;
-        cout << "Validation: " << (bool) (data_str == to_string_parse(sequence_number -1, 10)) << endl;
+        cout << "Validation: " << (bool) (data_str == to_string_parse(seqNumb -1, 10)) << endl;
 
     }
     
@@ -190,7 +185,7 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, string m
 }
 
 // Calcula numero de paquetes y divide mensaje en varios
-bool sendMsg(struct sockaddr_in &objSocket, socklen_t &addrLen, string msg, int sock){
+bool sendMsg(struct sockaddr_in &objSocket, socklen_t &addrLen, string msg, int sock, int &seqNumb){
 
    // El msg se dividira en paquetes. Cada paquete desperdiciara:
    
@@ -220,7 +215,7 @@ bool sendMsg(struct sockaddr_in &objSocket, socklen_t &addrLen, string msg, int 
 
       pack = protocol + to_string_parse(numPacks-i, 3) + msg.substr(0, realSize);
 
-      send = sendPackageRDT3(objSocket, addrLen, pack, sock);
+      send = sendPackageRDT3(objSocket, addrLen, pack, sock, seqNumb);
       if (!send) break;
       
     //   this_thread::sleep_for(chrono::seconds(timeout)); // ESPERA A QUE PROCESEN COSAS :c
@@ -232,7 +227,6 @@ bool sendMsg(struct sockaddr_in &objSocket, socklen_t &addrLen, string msg, int 
    return send;
 
 }
-
 
 
 
@@ -294,3 +288,112 @@ string reciveMsg(struct sockaddr_in &objSocket, socklen_t &addrLen, int sock){
    return totalMsg;
 
 }
+
+
+
+class Server{
+private:
+
+    socklen_t addr_len;
+    struct sockaddr_in client_addr; // last client
+    int port, sock, seqNumber = 0;
+    
+public:
+
+    Server(){}
+
+    Server(int sockPort){
+
+        struct sockaddr_in initSock;
+        port = sockPort;
+
+        if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
+            perror("Socket err");
+            exit(1);
+        }
+
+        initSock.sin_family = AF_INET;
+        initSock.sin_port = htons(port);
+        initSock.sin_addr.s_addr = INADDR_ANY;
+        bzero(&(initSock.sin_zero),8);
+
+        if (bind(sock,(struct sockaddr *)&initSock, sizeof(struct sockaddr)) == -1)  {
+            perror("Bind");
+            exit(1);
+        }
+
+        addr_len = sizeof(struct sockaddr);
+    }
+
+
+    // Guarda en "client_addr" el ultimo cliente que envio mensaje
+    // (Para potencialmente responderle despues)
+    string serverRecive(){
+        string answ = reciveMsg(client_addr, addr_len, sock); 
+        return answ;
+    }
+
+    // Le envia msg a alguien en especifico
+    bool serverSend(struct sockaddr_in &addr, string msg){
+        return sendMsg(addr, addr_len, msg, sock, seqNumber);
+    }
+
+    // Le envia msg al ultimo cliente que se leyo
+    bool serverSendLast(string msg){
+        return sendMsg(client_addr, addr_len, msg, sock, seqNumber);
+    }
+
+    struct sockaddr_in getLastReadClient(){
+        return client_addr;
+    }
+
+};
+
+
+
+class Client{
+
+private:
+
+    socklen_t addr_len;
+    struct sockaddr_in server_addr; // last client
+    int port, sock, seqNumber = 0;
+
+public:
+
+    Client(){}
+
+    Client(int sockPort){
+
+        port = sockPort;
+
+        struct hostent *host = (struct hostent *) gethostbyname((char *)"127.0.0.1");
+
+        if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1){
+            perror("socket");
+            exit(1);
+        }
+
+        server_addr.sin_family = AF_INET;
+        server_addr.sin_port = htons(port);
+        server_addr.sin_addr = *((struct in_addr *)host->h_addr);
+        bzero(&(server_addr.sin_zero),8);
+
+    }
+
+
+    // Recive un mensaje del servidor
+    string clientRecive(){
+        string answ = reciveMsg(server_addr, addr_len, sock); 
+        return answ;
+    }
+
+
+    // Le envia msg al servidor
+    bool clientSend(string msg){
+        return sendMsg(server_addr, addr_len, msg, sock, seqNumber);
+    }
+
+
+    
+};

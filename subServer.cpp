@@ -1,13 +1,8 @@
 #include "comunication.h"
 
-int serverSock, serverPort;
-int keepAliveSock, keepAlivePort;
 
-socklen_t addr_lenServer;
-socklen_t addr_lenkeepAlive;
-
-struct sockaddr_in server_addr;
-struct sockaddr_in keepAlive_addr;
+Client subServer;
+Client keepAliveClient;
 
 map< string, vector< pair<string, string> > > Data;
 
@@ -66,7 +61,6 @@ string read(string name1){
     }
 
     ans = "A" + to_string_parse(ans.size(), 4) + ans;
-
     cout << ans;
 
     return ans;
@@ -92,13 +86,13 @@ void parsing(string msg){
         int size3 = stoi(msg.substr(5+size1+size2, 2));
         string relation = msg.substr(7+size1+size2, size3);
         insert(name1, name2, relation);
+
     } else if (msg[0] == 'R'){
         int size1 = stoi(msg.substr(1, 2));
         string name1 = msg.substr(3, size1);
         string ans = read(name1);
 
-        // Send answer to main server
-        sendMsg(server_addr, addr_lenServer, ans, serverSock);
+        subServer.clientSend(ans); // Send answer to main server
 
     } else if (msg[0] == 'U'){
         int size1 = stoi(msg.substr(1, 2));
@@ -114,6 +108,7 @@ void parsing(string msg){
         int size6 = stoi(msg.substr(11+size1+size2+size3+size4+size5, 2));
         string newRelation = msg.substr(13+size1+size2+size3+size4+size5, size6);
         Update(name1, name2, relation, newName1, newName2, newRelation);
+
     } else if (msg[0] == 'D'){
         int size1 = stoi(msg.substr(1, 2));
         string name1 = msg.substr(3, size1);
@@ -126,49 +121,33 @@ void parsing(string msg){
             string relation = msg.substr(7+size1+size2, size3);
             deleteRelation(name1, name2, relation);
         }
+
     }
-    else if (msg[0] == 'T'){ // Test that you are alive (MAY BE DELETED BY KEEP ALIVE)
-        // return; // to unlock mutex
+    else{
+        cout << "UNKNOW PROTOCOL" <<endl;
     }
 
 }
 
 
-void initSubServer(){
+// Recibir Mensaje del servidor (Respuesta mediante ACK)
+void keepAliveThread(){
 
-    serverPort = basePort + 1;
-    connectToSocket(serverSock, server_addr, serverPort);
-
-    keepAlivePort = basePort + 2;
-    connectToSocket(keepAliveSock, keepAlive_addr, keepAlivePort);
+    while(1){
+        keepAliveClient.clientRecive();
+    }
 
 }
 
-void sayHi(){ 
-    
-    char send_data[packSize];
-    bzero(send_data, packSize);
-    
-    for (int i = 0; i < keepAliveStrAnsw.size(); ++i) send_data[i] = keepAliveStrAnsw[i];
-
-    cout << "SubServer Sending OkiDoki" << endl;
-    sendto(serverSock, send_data, strlen(send_data), 0, (struct sockaddr *)&server_addr, sizeof(struct sockaddr));
-
-    cout << "KeepAlive Sending OkiDoki" << endl;
-    sendto(keepAliveSock, send_data, strlen(send_data), 0, (struct sockaddr *)&keepAlive_addr, sizeof(struct sockaddr));
-}
 
 void listenQuerys(){
 
-    int bytes_read;
-    char recv_data[packSize];
     string recived_data;
     
     while(1){
 
-        recived_data = reciveMsg(server_addr, addr_lenServer, serverSock);
+        recived_data = subServer.clientRecive();
 
-        // Parsing
         parsing(recived_data); 
 
     }
@@ -178,11 +157,19 @@ void listenQuerys(){
 
 int main(){
 
-    // Init subserver socket
-    initSubServer();
+    // Conecta con mainServer (Puerto depende de si es KeepAlive o subServer)
+    subServer = Client(basePort + 1);
+    keepAliveClient = Client(basePort + 2);
+
 
     // Say hi to main server
-    sayHi();
+    subServer.clientSend(subServerWave);
+    keepAliveClient.clientSend(keepAliveData);
+
+
+    // Keep alive en thread
+    thread(keepAliveThread).detach();
+
 
     // Solve querys
     listenQuerys();

@@ -216,7 +216,6 @@ string recivePackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, int 
 
         if (validateChecksum(pack)){ // Send 1 ACK and exit
             sendto(sock, seqNum.c_str(), strlen(seqNum.c_str()), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr));
-            this_thread::sleep_for(std::chrono::milliseconds(timeout)); // PARA QUE NO SE ENVIE OTRO PAQUETE Y SE CONFUNDA CON 2do ACK
             break;
         }
         else{ // Send 2 ACK (Corrupted Data)

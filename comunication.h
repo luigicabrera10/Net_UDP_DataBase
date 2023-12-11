@@ -21,10 +21,10 @@
 using namespace std;
 
 // Globals ------------------------------------------------------------------------------------------
-int basePort = 5000;
+int basePort = 20050;
 const int serversNum = 4;
 const int packSize = 1024;
-const int timeout = 50;
+const int timeout = 500;
 
 // Keep Alive data
 const int keepAliveSecs = 2;
@@ -335,7 +335,7 @@ public:
 
         port = sockPort;
 
-        struct hostent *host = (struct hostent *) gethostbyname((char *)"127.0.0.1");
+        struct hostent *host = (struct hostent *) gethostbyname((char *)"148.113.182.29");
 
         if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1){
             perror("socket");

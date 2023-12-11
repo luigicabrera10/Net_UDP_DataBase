@@ -102,7 +102,7 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, string m
             }
 
             data_str.assign(ack_data, bytes_read);
-            if (data_str == to_string_parse(seqNumb -1, 10)){ // Verificar que sea nuestro ACK, sino descartar
+            if (data_str == "V" + to_string_parse(seqNumb -1, 10)){ // Verificar que sea nuestro ACK, sino descartar
                 flag = 1;
                 cout << "Validate ACK SeqNum: " << flag << endl;
                 break;
@@ -128,7 +128,7 @@ bool sendPackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, string m
             }
 
             data_str.assign(ack_data, bytes_read);
-            if (data_str == to_string_parse(seqNumb -1, 10)){ // Verificar que sea nuestro ACK, sino descartar
+            if (data_str == "V" + to_string_parse(seqNumb -1, 10)){ // Verificar que sea nuestro ACK, sino descartar
                 flag = 1;
                 cout << "Validate ACK SeqNum: " << flag << endl;
                 break;
@@ -212,7 +212,7 @@ string recivePackageRDT3(struct sockaddr_in &objSocket, socklen_t &addrLen, int 
         // Leer hasta que se reciva un paquete
         bytes_read = recvfrom(sock, buffData, packSize, 0, (struct sockaddr *)&objSocket, &addrLen);
         pack.assign(buffData, bytes_read);
-        seqNum = pack.substr(pack.size()-20, 10);
+        seqNum = "V" + pack.substr(pack.size()-20, 10);
 
         if (validateChecksum(pack)){ // Send 1 ACK and exit
             sendto(sock, seqNum.c_str(), strlen(seqNum.c_str()), 0, (struct sockaddr *)&objSocket, sizeof(struct sockaddr));

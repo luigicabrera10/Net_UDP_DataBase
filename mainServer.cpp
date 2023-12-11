@@ -143,7 +143,6 @@ void initServer(){
     initSocket(sockSubServers, initSockSubServer, addr_lenSubServer, basePort + 1);
     cout << "UDPServer Waiting for subServers  on port " << basePort + 1 << endl;
 
-
     // Main Server Sockets (for KeepAlive's) -------------------------------------------------------------------
     initSocket(sockKeepAlive, initSockKeepAlive, addr_lenKeepAlive, basePort + 2);
     cout << "UDPServer Waiting for keepAlive  on port " << basePort + 2 << endl;

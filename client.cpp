@@ -1,10 +1,7 @@
 #include "comunication.h"
 
 
-// Variables Globales
-int serverSock;
-socklen_t addr_len;
-struct sockaddr_in server_addr;
+Client client;
 
 // Funcion que parsea el mensaje
 void parsing( char *data){
@@ -21,8 +18,8 @@ void parsing( char *data){
       string name2 = msg.substr(pos+1, pos2-pos-1);
       // Obtenemos la relacion que se encuentra despues del tercer espacio
       string relation = msg.substr(pos2+1);
-      // Obtenemos el numero de secuencia
-      string sequence_number_str = to_string_parse(sequence_number);
+      // // Obtenemos el numero de secuencia
+      // string sequence_number_str = to_string_parse(sequence_number);
       // Obtenemos el tamaño de la cadena
       int size1 = name1.length();
       int size2 = name2.length();
@@ -158,7 +155,9 @@ void parsing( char *data){
 
 int main(){
 
-   connectToSocket(serverSock, server_addr, basePort);
+   // connectToSocket(serverSock, server_addr, basePort);
+
+   client = Client(basePort);
 
    string msg;
    char send_data[packSize];
@@ -166,22 +165,27 @@ int main(){
 
    while (1) {
 
+      // Leer entrada usuario
       printf("\n$:");
       cin.getline(send_data, packSize);
+
+      // Parsear Data y convertirlo a msg (Enviar a Main Server)
       parsing(send_data);
 
       // cout << "Send data: " << send_data << endl;
 
       if ((strcmp(send_data , "q") == 0) || strcmp(send_data , "Q") == 0) break;
 
-      if (!sendMsg(server_addr, addr_len, send_data, serverSock)){
+      // Enviar a MainServer
+      if (!client.clientSend(send_data)){
          cout << "No se pudo enviar los datos" << endl;
          continue;
       }
 
+      // Si se envio una solicitud de lectura, esperar respuesta
       if (send_data[0] == 'R'){ // Lectura espera por respuesta
          cout << "ESPERANDO DATA: " << endl;
-         msg = reciveMsg(server_addr, addr_len, serverSock);
+         msg = client.clientRecive();
          cout << msg.substr(5, msg.size() - 5) << endl;
       }
 

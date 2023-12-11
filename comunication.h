@@ -34,10 +34,18 @@ string subServerWave = "WI'm a SubServer";
 
 // AUX Functions ------------------------------------------------------------------------------------
 
+int var = 0;
 // Funcion que convierte una string a un numero
 int checksum(const string input) {
    int checksum = 0;
    for (int i = 0; i < input.size(); ++i) checksum += (int) input[i];
+
+    if (var++ > 20){
+        cout << "CAMBIANDO HASH" << endl;
+        checksum += 4589;
+        var = 0;
+    }
+
    return checksum;
 }
 
